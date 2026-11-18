@@ -20,6 +20,8 @@ Waveshare ESP32-S3-Touch-LCD-1.28（愛称 **サンニー**）とAndroidスマ�
 
 ## はじめる前に
 
+**実機を手元に用意できたら**、[Windowsでの初回USB診断手順](PocketWorld/docs/FIRST_REAL_DEVICE_TEST.md)に従って、まず既存ファームウェアを消さずにCOMポートと基板センサーを確認してください。RAM上だけで動く `PocketWorld/tools/hardware_probe.py` を同梱しています。書き込み作業はバックアップ手順を確定してから進めます。
+
 - `PocketWorld/firmware/settings.py` のWi-Fiパスワードと更新キーは**公開用の初期値**です。サンニー実機に入れる前に、各自の秘密の値に変更してください。自分のパスワードやキーをGitHubに登録しないでください。
 - 初回のMicroPython導入や新しい `main.py` の反映にはUSB接続が必要です。現在、ESP32-S3の**丸形液晶への表示は未実装**です。v0.4の夜間スリープは実機安全確認前のため `ENABLE_DEEP_SLEEP = False` でロックしています。
 - ESP32実機とAndroid実機による動作確認は未完了です。
