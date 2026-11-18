@@ -4,7 +4,7 @@ Waveshare ESP32-S3-Touch-LCD-1.28（愛称 **サンニー**）とAndroidスマ�
 
 ## プロジェクト構成
 
-- **[PocketWorld/](PocketWorld/README.md)** — ESP32-S3用のMicroPythonコード、4世界シミュレーション、スマホ用Web画面、無線更新API
+- **[PocketWorld/](PocketWorld/README.md)** — ESP32-S3用のMicroPythonコード、4世界シミュレーション、音量に反応する世界ロジック（マイク接続は未実装）、スマホ用Web画面、無線更新API
 - **[SannyCompanionAndroid/](SannyCompanionAndroid/README.md)** — Android専用アプリ「サンニー Companion」。大画面での観察、無線での画像・世界データ更新
 - **[.github/workflows/build-apk.yml](.github/workflows/build-apk.yml)** — `main` ブランチの更新時と手動実行時にAndroidのデバッグAPKをビルド
 

@@ -14,6 +14,10 @@ WORLD_DEFS = (
 WEATHERS = ("sunny", "sunny", "cloudy", "rain", "windy")
 MAX_OFFLINE_SECONDS = 48 * 3600
 TICK_SECONDS = 60
+# Sound levels are normalized values from 0 to 100, not raw microphone samples.
+# The optional microphone adapter should call observe_sound() once per minute.
+SOUND_QUIET_MAX = 24
+SOUND_LOUD_MIN = 70
 
 
 def _clamp(value, bottom=0, top=100):
@@ -42,12 +46,18 @@ class PocketWorld:
                 "residents": self._int(old, "residents", 1 if ident == "city" else 0),
                 "houses": self._int(old, "houses", 1 if ident == "city" else 0),
                 "magic": self._int(old, "magic", 1 if ident == "fantasy" else 0),
+                "sound_activity": _clamp(self._int(old, "sound_activity", 0), 0, 19),
+                "sound_projects": _clamp(self._int(old, "sound_projects", 0), 0, 2),
+                "sound_sparks": _clamp(self._int(old, "sound_sparks", 0), 0, 7),
                 "weather": old.get("weather", "sunny"),
                 "events": list(old.get("events", []))[-5:],
             }
         self.last_wall_epoch = self._int(restored, "last_wall_epoch", 0)
         self.runtime_since_boot = 0
         self.clock_reconciled = False
+        # Runtime-only status: a saved world never implies that a mic is plugged in.
+        # No audio recordings or raw samples are retained.
+        self.audio = {"connected": False, "level": None, "band": None}
 
     @staticmethod
     def _int(obj, key, default):
@@ -150,6 +160,73 @@ class PocketWorld:
             self._event(world, "魔力の粒子が集まりました")
         return True
 
+    def observe_sound(self, level):
+        """React to ONE normalized sound-level sample (0..100) for all worlds.
+
+        The hardware-specific adapter is intentionally NOT included until the
+        user's external six-pin microphone model and wiring are confirmed.
+        Call at most once per minute, to avoid unnaturally fast development.
+        This method processes a volume number only, never speech or PCM audio.
+        """
+        if isinstance(level, bool):
+            return False
+        try:
+            level = int(level)
+        except (TypeError, ValueError, OverflowError):
+            return False
+        if not 0 <= level <= 100:
+            return False
+
+        band = ("quiet" if level <= SOUND_QUIET_MAX
+                else "loud" if level >= SOUND_LOUD_MIN else "active")
+        changed = band != self.audio["band"]
+        self.audio = {"connected": True, "level": level, "band": band}
+
+        # Nature and harmony respond through the weather.
+        weather = {"quiet": "sunny", "active": "windy", "loud": "rain"}[band]
+        for ident in ("nature", "hybrid"):
+            world = self.worlds[ident]
+            world["weather"] = weather
+            if changed:
+                messages = {
+                    "quiet": "静かな空気に包まれ、空が晴れました",
+                    "active": "周りの音に合わせて風が吹き始めました",
+                    "loud": "にぎやかな音に誘われて雨が降り始めました",
+                }
+                self._event(world, messages[band])
+
+        # Town and harmony use sustained activity to grow; a single loud sound
+        # cannot instantly spawn many houses or residents.
+        if band != "quiet":
+            for ident, threshold in (("city", 8), ("hybrid", 12)):
+                world = self.worlds[ident]
+                world["sound_activity"] += 2 if band == "loud" else 1
+                if world["sound_activity"] >= threshold:
+                    world["sound_activity"] = 0
+                    world["residents"] = min(40, world["residents"] + 1)
+                    world["sound_projects"] += 1
+                    self._event(world, "周囲の活気につられて新しい住民がやってきました")
+                    if world["sound_projects"] >= 3:
+                        world["sound_projects"] = 0
+                        world["houses"] = min(16, world["houses"] + 1)
+                        self._event(world, "にぎやかな街に新しい建物が完成しました")
+
+        # Powerful sound fills the magic world with energy. Only after several
+        # strong observations does a rare shooting-star event appear.
+        if band == "loud":
+            fantasy = self.worlds["fantasy"]
+            fantasy["magic"] = min(80, fantasy["magic"] + 1)
+            fantasy["sound_sparks"] += 1
+            if fantasy["sound_sparks"] >= 8:
+                fantasy["sound_sparks"] = 0
+                fantasy["magic"] = min(80, fantasy["magic"] + 5)
+                self._event(fantasy, "音の魔力が満ち、珍しい流れ星が降りました")
+        return True
+
+    def disconnect_sound(self):
+        """Mark the optional mic as disconnected without altering the worlds."""
+        self.audio = {"connected": False, "level": None, "band": None}
+
     def snapshot(self):
         worlds = []
         for ident, _, _, _ in WORLD_DEFS:
@@ -158,7 +235,8 @@ class PocketWorld:
             worlds.append({key: (value[:] if isinstance(value, list) else value)
                            for key, value in world.items()})
         return {"version": self.VERSION, "worlds": worlds,
-                "linked": True, "time_source": "phone" if self.clock_reconciled else "uptime"}
+                "linked": True, "audio": dict(self.audio),
+                "time_source": "phone" if self.clock_reconciled else "uptime"}
 
     def persistable(self):
         return {

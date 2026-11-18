@@ -40,6 +40,7 @@
     .stat small{display:block;font-size:11px;color:#a9c3b5;margin-bottom:4px}.stat strong{font-size:21px;letter-spacing:-.03em}.stat em{font-style:normal;color:#c1d7cb;font-size:11px;margin-left:4px}
     .timebox{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #334747;color:#ccd9cf;font-size:12px}
     .timebox:first-of-type{border-top:0}.timebox b{color:#f1f7ed;font-size:12px}
+    .sound-description{color:#aec7b8;font-size:12px;line-height:1.7;margin:0 0 12px}
     .events{margin:0;padding:0;list-style:none}.events li{padding:9px 0;border-top:1px solid #314343;color:#d8e7da;font-size:12px;line-height:1.6}.events li:first-child{border-top:0}
     .footer{margin-top:20px;font-size:11px;color:#839d93;line-height:1.7}
     #toast{position:fixed;bottom:30px;left:50%;transform:translate(-50%,10px);opacity:0;transition:.2s;background:#efffe9;color:#213c31;border-radius:14px;padding:11px 17px;max-width:min(350px,90vw);text-align:center;font-size:13px;box-shadow:0 8px 30px #0006;z-index:10;pointer-events:none}
@@ -68,6 +69,7 @@
     <div class="side">
       <section class="panel"><h3>世界のようす <span>LIVE STATUS</span></h3><div class="stats" id="stats"></div></section>
       <section class="panel"><h3>観察ノート <span>FIELD NOTES</span></h3><div class="timebox"><span>経過時間</span><b id="elapsed">0分</b></div><div class="timebox"><span>現在の発展段階</span><b id="stage">誕生したばかり</b></div><div class="timebox"><span>更新</span><b id="sync">5秒ごと</b></div></section>
+      <section class="panel"><h3>🎤 音で変わる世界 <span>SOUND REACTIONS</span></h3><p class="sound-description" id="sound-description">周囲の音で小さな世界が変化します。</p><div class="timebox"><span>マイクの状態</span><b id="sound-status">外付けマイク待ち</b></div><div class="timebox"><span>音のようす</span><b id="sound-level">未計測</b></div></section>
       <section class="panel"><h3>最近のできごと <span>EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
     </div>
   </div>
@@ -91,6 +93,13 @@
     fantasy:{water:"#675a96",deep:"#453a77",soil:"#9685a1",ground:"#7d85a0",light:"#9da1bb",shadow:"#5b6684",trees:"#4b517f",trunk:"#6c587a",roof:"#bf8ad7"}
   };
   let selected = "nature", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
+  let audioState = {connected:false,level:null,band:null};
+  const soundDescriptions = {
+    nature:"静かなら晴れ、音が増えると風、にぎやかになると雨。自然が音に反応します。",
+    city:"作業音や話し声などの活気が続くと、住民が増えて建物が育ちます。",
+    hybrid:"自然の天候と街の発展が、周囲の音にそれぞれ反応します。",
+    fantasy:"強い音から魔力がたまり、ときどき珍しい流れ星が降ります。"
+  };
   const $ = id => document.getElementById(id);
   const canvas = $("world-canvas"), ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
@@ -177,6 +186,9 @@
     const metrics=[["🌿 植物",w.plants,"株"],["🐾 動物",w.wildlife,"匹"],["👤 住民",w.residents,"人"],[selected==="fantasy"?"✨ 魔力":"🏠 建物",selected==="fantasy"?w.magic:w.houses,selected==="fantasy"?"pt":"軒"]];
     $("stats").innerHTML=metrics.map(([label,value,unit])=>'<div class="stat"><small>'+label+'</small><strong>'+value+'</strong><em>'+unit+'</em></div>').join("");
     $("elapsed").textContent=Math.floor(w.minutes/60)+"時間 "+(w.minutes%60)+"分";$("stage").textContent=stage(w);
+    $("sound-description").textContent=soundDescriptions[selected];
+    $("sound-status").textContent=audioState.connected?"反応中":"外付けマイク待ち";
+    $("sound-level").textContent=audioState.connected?({quiet:"静か",active:"活動中",loud:"にぎやか"}[audioState.band]||"計測中")+" ・ "+audioState.level+"/100":"未計測";
     const list=(w.events||[]).slice(-4).reverse();$("events").replaceChildren(...(list.length?list:["この世界が誕生しました"]).map(msg=>{const li=document.createElement("li");li.textContent=msg;return li;}));
   }
   function setWorld(id){if(!worlds.includes(id))return;selected=id;document.querySelectorAll('.tab').forEach(el=>{const active=el.dataset.world===id;el.classList.toggle('active',active);el.setAttribute('aria-pressed',active);});render();}
@@ -187,10 +199,11 @@
       if(!response.ok)throw Error("No ESP32 API");const data=await response.json();
       if(!Array.isArray(data.worlds)||data.worlds.length!==4)throw Error("Bad state");
       current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
+      audioState=data.audio&&typeof data.audio.connected==="boolean"?data.audio:{connected:false,level:null,band:null};
       live=true;$("connection").textContent="● ESP32に接続中";$("connection").classList.remove("demo");
     }catch(err){
       if(live)showToast("ESP32との通信が切れました。再接続を待っています。");
-      live=false;current=Object.fromEntries(makeDemo().map(w=>[w.id,w]));
+      live=false;current=Object.fromEntries(makeDemo().map(w=>[w.id,w]));audioState={connected:false,level:null,band:null};
       $("connection").textContent="● デモ表示";$("connection").classList.add("demo");
     }
     render();
