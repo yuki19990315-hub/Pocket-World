@@ -1,8 +1,7 @@
-"""MicroPython HTTP endpoint for Pocket World + Sanny Companion v0.4.
+"""MicroPython HTTP endpoint for Pocket World + Sanny Companion.
 
-Upload main.py, safe_update.py, world_model.py, settings.py and /index.html
-to the board's root filesystem. This first prototype provides the shared world
-engine and the phone viewer; round LCD rendering requires a matching GC9A01 driver.
+Upload all Python modules, /index.html and assets/ to the board's filesystem.
+The round display is optional and fails safely if missing or miswired.
 """
 
 import gc
@@ -13,7 +12,7 @@ import time
 
 import settings
 from world_model import PocketWorld
-from safe_update import receive_update
+from safe_update import receive_update, valid_filename
 from power_runtime import PowerRuntime
 from motion_effects import MotionEffects
 
@@ -22,6 +21,7 @@ SAVE_TEMP = "worlds.tmp"
 SAVE_BACKUP = "worlds.bak"
 SAVE_INTERVAL = 300  # seconds; avoid excessive flash writes
 MOTION_SETTINGS_FILE = "motion_settings.json"
+DISPLAY_SETTINGS_FILE = "display.json"
 
 
 def load_worlds():
@@ -76,21 +76,66 @@ def response(client, status, content_type, body):
     client.sendall(body)
 
 
-def serve_html(client):
+def serve_file(client, filename, content_type):
     try:
-        length = os.stat("index.html")[6]
-        head = ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n"
+        length = os.stat(filename)[6]
+        head = ("HTTP/1.1 200 OK\r\nContent-Type: %s\r\n"
                 "Content-Length: %d\r\nCache-Control: no-store\r\n"
-                "Connection: close\r\n\r\n" % length)
+                "Connection: close\r\n\r\n" % (content_type, length))
         client.sendall(head.encode("ascii"))
-        with open("index.html", "rb") as handle:
+        with open(filename, "rb") as handle:
             while True:
                 chunk = handle.read(1024)
                 if not chunk:
                     break
                 client.sendall(chunk)
     except OSError:
-        response(client, "500 Internal Server Error", "text/plain", "Missing /index.html")
+        response(client, "404 Not Found", "text/plain", "File not installed")
+
+
+def serve_html(client):
+    serve_file(client, "index.html", "text/html; charset=utf-8")
+
+
+def serve_asset(client, path):
+    # This is also the upload allowlist; never pass URL traversal to open().
+    filename = path.lstrip("/")
+    if not path.startswith("/assets/") or not valid_filename(filename):
+        response(client, "404 Not Found", "text/plain", "Not found")
+        return
+    if filename.endswith(".png"):
+        mime = "image/png"
+    elif filename.endswith(".jpg"):
+        mime = "image/jpeg"
+    elif filename.endswith(".json"):
+        mime = "application/json"
+    else:
+        mime = "application/octet-stream"
+    serve_file(client, filename, mime)
+
+
+def save_display_selection(world):
+    with open(DISPLAY_SETTINGS_FILE + ".tmp", "w") as handle:
+        json.dump({"world": world}, handle)
+    try:
+        os.remove(DISPLAY_SETTINGS_FILE + ".bak")
+    except OSError:
+        pass
+    try:
+        os.rename(DISPLAY_SETTINGS_FILE, DISPLAY_SETTINGS_FILE + ".bak")
+    except OSError:
+        pass
+    os.rename(DISPLAY_SETTINGS_FILE + ".tmp", DISPLAY_SETTINGS_FILE)
+
+
+def load_display_selection(screen):
+    for filename in (DISPLAY_SETTINGS_FILE, DISPLAY_SETTINGS_FILE + ".bak"):
+        try:
+            with open(filename, "r") as handle:
+                screen.choose(json.load(handle)["world"])
+            return
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
 
 
 def query_param(path, key):
@@ -174,7 +219,7 @@ def save_motion_settings(enabled):
     os.rename(MOTION_SETTINGS_FILE + ".tmp", MOTION_SETTINGS_FILE)
 
 
-def service(client, engine, power=None, motion=None, microphone=None):
+def service(client, engine, power=None, motion=None, microphone=None, screen=None):
     client.settimeout(7)
     try:
         method, path, headers, body = parse_request(client)
@@ -183,10 +228,12 @@ def service(client, engine, power=None, motion=None, microphone=None):
         return False
     if method == "GET" and (path == "/" or path.startswith("/?")):
         serve_html(client)
+    elif method == "GET" and path.startswith("/assets/"):
+        serve_asset(client, path)
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.4", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.5", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):
@@ -197,6 +244,8 @@ def service(client, engine, power=None, motion=None, microphone=None):
             "connected": False, "tilt_x": 0, "tilt_y": 0, "shake_id": 0}
         if microphone is not None:
             snapshot["audio"] = microphone.status()
+        snapshot["display"] = screen.status() if screen is not None else {
+            "connected": False, "selected": None}
         response(client, "200 OK", "application/json; charset=utf-8", json.dumps(snapshot))
         return bool(changed)
     elif method == "GET" and path == "/api/power":
@@ -209,6 +258,26 @@ def service(client, engine, power=None, motion=None, microphone=None):
         response(client, "200 OK", "application/json",
                  json.dumps(microphone.status() if microphone is not None else {
                      "connected": False, "level": None, "band": None}))
+    elif method == "GET" and path == "/api/display":
+        response(client, "200 OK", "application/json",
+                 json.dumps(screen.status() if screen is not None else {
+                     "connected": False, "selected": None}))
+    elif method == "POST" and path == "/api/display/select":
+        if screen is None:
+            response(client, "503 Service Unavailable", "application/json",
+                     '{"error":"Round LCD unavailable"}')
+            return False
+        try:
+            data = json_request(client, headers, body, maximum=160)
+            if len(data) != 1 or not isinstance(data.get("world"), str):
+                raise ValueError("world ID required")
+            screen.choose(data["world"])
+            save_display_selection(screen.selected)
+            screen.show(engine.worlds[screen.selected]["minutes"], force=True)
+            response(client, "200 OK", "application/json", json.dumps(screen.status()))
+        except (ValueError, OSError, TypeError) as exc:
+            response(client, "400 Bad Request", "application/json",
+                     json.dumps({"error": str(exc)}))
     elif method == "POST" and path == "/api/motion/settings":
         if not authorized(headers):
             response(client, "403 Forbidden", "application/json", '{"error":"Invalid admin key"}')
@@ -284,16 +353,37 @@ def main():
     motion = MotionEffects()
     load_motion_settings(motion)
     sensor = None
+    screen = None
+    bus = None
     microphone = None
     try:
         import machine
         power.restore_timer_wake(machine.reset_cause() == machine.DEEPSLEEP_RESET)
+        if getattr(settings, "ENABLE_MOTION_SENSOR", True) or getattr(settings, "ENABLE_SCREEN", True):
+            bus = machine.I2C(0, sda=machine.Pin(6), scl=machine.Pin(7), freq=400000)
         if getattr(settings, "ENABLE_MOTION_SENSOR", True):
             from qmi8658 import QMI8658
-            bus = machine.I2C(0, sda=machine.Pin(6), scl=machine.Pin(7), freq=400000)
             sensor = QMI8658(bus)
     except (ImportError, OSError, ValueError, AttributeError) as exc:
         print("Motion sensor unavailable:", exc)
+    if getattr(settings, "ENABLE_SCREEN", True):
+        try:
+            import machine
+            from round_screen import GC9A01, RoundScreen, BatteryGauge
+            driver = GC9A01()
+            try:
+                battery = BatteryGauge()
+            except (OSError, ValueError, AttributeError) as exc:
+                print("Battery ADC unavailable:", exc)
+                battery = None
+            touch_reset = machine.Pin(13, machine.Pin.OUT, value=1)
+            screen = RoundScreen(driver, bus, touch_reset, battery)
+            load_display_selection(screen)
+            if not screen.show(engine.worlds[screen.selected]["minutes"], force=True):
+                print("Display art missing: upload assets/*.dat to /assets")
+        except (ImportError, OSError, ValueError, AttributeError, MemoryError) as exc:
+            print("Round LCD unavailable:", exc)
+            screen = None
     if getattr(settings, "ENABLE_MICROPHONE", False):
         try:
             from inmp441 import INMP441
@@ -309,7 +399,7 @@ def main():
     ap = None
     # Silent background wake: the weekend world grows while the LCD stays dark.
     if power.plan_sleep() is not None:
-        enter_sleep(engine, power, sensor, ap, microphone)
+        enter_sleep(engine, power, sensor, ap, microphone, screen)
     ap = configure_wifi()
     address = socket.getaddrinfo("0.0.0.0", settings.PORT)[0][-1]
     server = socket.socket()
@@ -323,6 +413,8 @@ def main():
     elapsed_ms = 0
     since_save = 0
     motion_ms = 0
+    touch_ms = 0
+    screen_ms = 0
     mic_ms = 0
     mic_react_ms = 60000  # First confirmed sample can create one event.
     uptime_ms = 0
@@ -332,6 +424,8 @@ def main():
         elapsed_ms += delta
         power.tick(delta)
         motion_ms += delta
+        touch_ms += delta
+        screen_ms += delta
         mic_ms += delta
         mic_react_ms += delta
         uptime_ms += delta
@@ -344,6 +438,21 @@ def main():
             except OSError as exc:
                 print("Motion read failed, disabling sensor:", exc)
                 sensor = None
+        if screen is not None and touch_ms >= 160:
+            touch_ms %= 160
+            try:
+                ident = screen.poll_touch()
+                if ident is not None:
+                    save_display_selection(ident)
+                    screen.show(engine.worlds[ident]["minutes"], force=True)
+            except (OSError, ValueError) as exc:
+                print("Touch read failed:", exc)
+        if screen is not None and screen_ms >= 60000:
+            screen_ms %= 60000
+            try:
+                screen.show(engine.worlds[screen.selected]["minutes"])
+            except (OSError, ValueError, MemoryError) as exc:
+                print("Display refresh failed:", exc)
         if microphone is not None and mic_ms >= 250:
             mic_ms %= 250
             try:
@@ -368,14 +477,14 @@ def main():
             save_worlds(engine)
             since_save = 0
         if power.plan_sleep() is not None:
-            enter_sleep(engine, power, sensor, ap, microphone)
+            enter_sleep(engine, power, sensor, ap, microphone, screen)
         try:
             client, _ = server.accept()
         except OSError:
             continue
         result = False
         try:
-            result = service(client, engine, power, motion, microphone)
+            result = service(client, engine, power, motion, microphone, screen)
             if result is True:
                 save_worlds(engine)
                 since_save = 0
@@ -391,7 +500,7 @@ def main():
             machine.reset()
 
 
-def enter_sleep(engine, power, sensor, ap, microphone=None):
+def enter_sleep(engine, power, sensor, ap, microphone=None, screen=None):
     """Optional path; only reachable after hardware sleep is explicitly enabled."""
     seconds = power.plan_sleep()
     if seconds is None:
@@ -405,6 +514,8 @@ def enter_sleep(engine, power, sensor, ap, microphone=None):
         sensor.standby()
     if microphone is not None:
         microphone.deinit()
+    if screen is not None:
+        screen.driver.sleep()
     if ap is not None:
         ap.active(False)
     import machine

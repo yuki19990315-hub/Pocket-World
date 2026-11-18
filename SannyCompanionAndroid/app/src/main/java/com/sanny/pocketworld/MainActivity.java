@@ -36,7 +36,11 @@ import android.widget.Toast;
 
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Native companion: observe 6 worlds and update Sanny safely over local Wi-Fi. */
 public class MainActivity extends Activity {
@@ -269,7 +273,18 @@ public class MainActivity extends Activity {
         uploadProgress.setMax(100);uploadProgress.setProgress(0);add(box, uploadProgress, 9, 10);
         uploadStatus = label("接続待ち", 12, MUTED, false);add(box, uploadStatus, -2, 8);
 
-        TextView note = label("更新できるのは index.html、world_model.py、画像・データ（png / jpg / json / dat）です。main.py・settings.py・ファームウェア全体は安全のため無線上書きできません。", 12, MUTED, false);
+        LinearLayout pack=vertical(17);pack.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));add(col,pack,-2,15);
+        add(pack,label("🌎 完成した世界をまとめて更新",16,ACCENT,true),-2,9);
+        add(pack,label("街・自然・共生・魔法・森・川・海・深海の完成イラスト16枚、サンニー用16枚の画面データ、スマホ観察画面を順番に転送します。初回は数分かかることがあります。",12,MUTED,false),-2,12);
+        Button uploadWorlds=action("完成ワールドパックを送信");
+        uploadWorlds.setOnClickListener(v->new AlertDialog.Builder(this)
+            .setTitle("世界のイラストを更新する？")
+            .setMessage("本体のWi-Fi接続と管理用キーが必要です。転送中はアプリを閉じずに待ってね。")
+            .setNegativeButton("戻る",null)
+            .setPositiveButton("33ファイルを転送",(dialog,which)->uploadWorldPack(uploadWorlds)).show());
+        add(pack,uploadWorlds,47,7);
+
+        TextView note = label("更新できるのは index.html、world_model.py、画像・データ（png / jpg / json / dat）です。新しい表示ドライバやmain.pyの導入は最初にUSBで行います。main.py・settings.py・ファームウェア全体は安全のため無線上書きできません。", 12, MUTED, false);
         add(col, note, -2, 16);
         Button restart = secondary("サンニーを再起動");
         restart.setOnClickListener(v -> new AlertDialog.Builder(this).setTitle("サンニーを再起動？")
@@ -333,7 +348,7 @@ public class MainActivity extends Activity {
         Button syncClock=secondary("現在時刻をサンニーと同期");
         syncClock.setOnClickListener(v->syncSannyClock(powerStatus));
         add(routine,syncClock,46,12);
-        add(routine,label("※ ESP32本体にもv0.4のmain.pyが必要。画面OFF・深いスリープは実機検証前のため安全ロック中で、時刻設定を保存してもまだ自動休眠しません。",12,MUTED,false),-2,5);
+        add(routine,label("※ ESP32本体にはv0.5のmain.pyが必要。画面OFF・深いスリープは実機検証前のため安全ロック中で、時刻設定を保存してもまだ自動休眠しません。",12,MUTED,false),-2,5);
 
         LinearLayout motionBox=vertical(17);
         motionBox.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
@@ -379,7 +394,7 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{wake[0]=start;sleep[0]=end;enabled.setChecked(active);
                     wakeButton.setText("☀ 起床 "+start);sleepButton.setText("🌙 就寝 "+end);
                     status.setText(info);setConnected(true);});
-            }catch(Exception err){runOnUiThread(()->status.setText("取得できません："+err.getMessage()+"（本体はv0.4が必要）"));}
+            }catch(Exception err){runOnUiThread(()->status.setText("取得できません："+err.getMessage()+"（本体のファームウェアを確認してね）"));}
         }).start();
     }
 
@@ -484,6 +499,55 @@ public class MainActivity extends Activity {
                 runOnUiThread(()->{uploadStatus.setText("✓ 更新ファイルを送信・保存できたよ"+
                         (name.endsWith(".py")?"。再起動で反映されます。":"。"));setConnected(true);});
             } catch(Exception err){runOnUiThread(()->uploadStatus.setText("送信失敗："+err.getMessage()));}
+        }).start();
+    }
+
+    private void uploadWorldPack(Button trigger) {
+        final String secret=uploadKey.getText().toString().trim();
+        if(secret.isEmpty()){uploadStatus.setText("管理用キーを入力してね");return;}
+        preferences.edit().putString("admin_key",secret).apply();
+        final TextView status=uploadStatus;
+        final ProgressBar progress=uploadProgress;
+        trigger.setEnabled(false);progress.setProgress(0);
+        status.setText("更新パックを確認中…");preferWifiRoute();
+        new Thread(()->{
+            int completed=0;
+            String currentFile="";
+            try {
+                List<String> names=new ArrayList<>();
+                try(BufferedReader manifest=new BufferedReader(new InputStreamReader(
+                        getAssets().open("world_pack/manifest.txt"),"UTF-8"))){
+                    String line;
+                    while((line=manifest.readLine())!=null){
+                        if(!line.trim().isEmpty())names.add(line.trim());
+                    }
+                }
+                if(names.size()!=33)throw new java.io.IOException("更新パックのファイル一覧が不正です");
+                for(int i=0;i<names.size();i++){
+                    currentFile=names.get(i);
+                    if(SannyApi.uploadName(currentFile)==null)throw new java.io.IOException("不正なファイル名："+currentFile);
+                    final int index=i;
+                    final String updating=currentFile;
+                    runOnUiThread(()->status.setText((index+1)+"/"+names.size()+" 送信中："+updating));
+                    byte[] bytes;
+                    try(InputStream source=getAssets().open("world_pack/"+currentFile)){
+                        bytes=SannyApi.readLimited(source);
+                    }
+                    SannyApi.upload(currentFile,bytes,secret,(sent,total)->{
+                        int percent=(index*100+sent*100/total)/names.size();
+                        runOnUiThread(()->progress.setProgress(percent));
+                    });
+                    completed++;
+                }
+                runOnUiThread(()->{
+                    progress.setProgress(100);
+                    status.setText("✓ 完成イラスト・画面データ・観察画面の33ファイルを更新しました。再読み込みしてね。");
+                    trigger.setEnabled(true);setConnected(true);
+                });
+            }catch(Exception err){
+                final String message="中断："+completed+"/33ファイル完了（"+currentFile+"） / "+err.getMessage()+"。再実行で上書きできます。";
+                runOnUiThread(()->{status.setText(message);trigger.setEnabled(true);});
+            }
         }).start();
     }
 

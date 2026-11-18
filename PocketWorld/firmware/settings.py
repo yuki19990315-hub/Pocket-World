@@ -15,6 +15,11 @@ STA_PASSWORD = ""
 
 PORT = 80
 
+# Waveshare ESP32-S3-Touch-LCD-1.28 GC9A01A + CST816S + battery ADC.
+# The Python driver is included, but hardware orientation/colours must be
+# checked on COM7 before sealing the enclosure or enabling deep sleep.
+ENABLE_SCREEN = True
+
 # Hardware sleep requires USB access for recovery and real-world RTC testing.
 # Keep disabled until the round-LCD/backlight driver and physical reset access
 # have been checked. Time settings can be saved from the app in either case.

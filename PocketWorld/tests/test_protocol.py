@@ -75,6 +75,62 @@ class TestProtocol(unittest.TestCase):
         good = FakeClient(request("POST", "/api/restart", {"X-Admin-Key":"secret"}))
         self.assertEqual(main.service(good, self.engine), "restart")
 
+    def test_device_mode_changes_persist_without_changing_phone_world(self):
+        class Screen:
+            selected = "nature"
+            def choose(self, world):
+                if world not in ("nature", "city"):
+                    raise ValueError("Unknown world")
+                self.selected = world
+            def show(self, minutes, force=False):
+                return True
+            def status(self):
+                return {"selected": self.selected, "connected": True}
+        with tempfile.TemporaryDirectory() as directory:
+            previous = os.getcwd()
+            os.chdir(directory)
+            try:
+                body = b'{"world":"city"}'
+                screen = Screen()
+                client = FakeClient(request("POST", "/api/display/select",
+                    {"Content-Length":str(len(body))}, body), chunksize=5)
+                self.assertFalse(main.service(client, self.engine, screen=screen))
+                self.assertIn(b"200 OK", client.written)
+                self.assertEqual(screen.selected, "city")
+                with open("display.json") as saved:
+                    self.assertEqual(json.load(saved)["world"], "city")
+                main.load_display_selection(Screen())
+            finally:
+                os.chdir(previous)
+
+    def test_invalid_mode_is_not_persisted(self):
+        class Screen:
+            selected = "nature"
+            def choose(self, world):
+                raise ValueError("Unknown world")
+        client = FakeClient(request("POST", "/api/display/select",
+            {"Content-Length":"17"}, b'{"world":"alien"}'))
+        self.assertFalse(main.service(client, self.engine, screen=Screen()))
+        self.assertIn(b"400 Bad Request", client.written)
+
+    def test_art_file_is_streamed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            previous = os.getcwd()
+            os.chdir(directory)
+            try:
+                os.mkdir("assets")
+                with open("assets/river-mature.png", "wb") as f:
+                    f.write(b"PNG fixture")
+                client = FakeClient(request("GET", "/assets/river-mature.png"))
+                self.assertFalse(main.service(client, self.engine))
+                self.assertIn(b"Content-Type: image/png", client.written)
+                self.assertTrue(client.written.endswith(b"PNG fixture"))
+                invalid = FakeClient(request("GET", "/assets/../worlds.json"))
+                self.assertFalse(main.service(invalid, self.engine))
+                self.assertIn(b"404 Not Found", invalid.written)
+            finally:
+                os.chdir(previous)
+
 
 if __name__ == "__main__":
     unittest.main()

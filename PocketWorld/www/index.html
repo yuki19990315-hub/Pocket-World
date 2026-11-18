@@ -32,7 +32,7 @@
     .screen{position:relative;max-width:420px;margin:0 auto;aspect-ratio:1;border-radius:50%;padding:6px;background:#0a1819;box-shadow:0 0 0 5px #384c48,0 0 0 7px #132524,0 17px 28px #050e118a}
     canvas{display:block;width:100%;height:100%;border-radius:50%;image-rendering:pixelated;touch-action:manipulation;cursor:crosshair}
     .screen-label{position:absolute;left:50%;bottom:10%;transform:translateX(-50%);white-space:nowrap;background:#0b2121c9;border:1px solid #8fbcab44;color:#f6faee;font-size:11px;padding:5px 10px;border-radius:20px;pointer-events:none}
-    .controls{display:flex;justify-content:space-between;align-items:center;margin-top:17px;gap:10px}
+    .controls{display:flex;justify-content:space-between;align-items:center;margin-top:17px;gap:10px;flex-wrap:wrap}
     .hint{color:#9cb1aa;font-size:11px}.small-btn{color:#e9fbdf;background:#365248;border:1px solid #557b61;padding:9px 13px;border-radius:11px;font-weight:650;font-size:12px}
     .water-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:15px}
     .water-tab{font-size:12px;padding:11px 5px;border:1px solid #4e797a;background:#203d47;color:#d6efec;border-radius:12px}
@@ -76,7 +76,8 @@
         <button class="water-tab" data-area="ocean">🪸 海</button>
         <button class="water-tab" data-area="deepsea">🌌 深海</button>
       </div>
-      <div class="controls"><span class="hint" id="world-hint">世界をタップして、小さな変化を起こそう</span><button class="small-btn" id="zoom-btn">拡大する ＋</button></div>
+      <div class="controls"><span class="hint" id="world-hint">世界をタップして、小さな変化を起こそう</span><button class="small-btn" id="zoom-btn">拡大する ＋</button><button class="small-btn" id="device-select" hidden>この世界をサンニーに表示</button></div>
+      <p class="hint" id="device-status" aria-live="polite"></p>
     </section>
     <div class="side">
       <section class="panel"><h3>世界のようす <span>LIVE STATUS</span></h3><div class="stats" id="stats"></div></section>
@@ -86,7 +87,7 @@
       <section class="panel"><h3>最近のできごと <span>EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
     </div>
   </div>
-  <p class="footer">ESP32に接続中は実際の保存データを表示します。デモ表示では水槽3エリアを自由にプレビューできます。実機の水槽は川から始まり、海は1日後、深海は3日後に自動解放されます。各世界は60秒ごとに自動成長します。</p>
+  <p class="footer">ESP32に接続中は本体で保存した世界を観察します。川・海・深海の風景は独立したイラストで、誕生から30日かけて少しずつ姿を変えます。デモでは3エリアを自由にプレビューできます。実機の水槽は川から始まり、海は1日後、深海は3日後に自動解放されます。世界は60秒ごとに成長します。</p>
 </main>
 <div id="toast" role="status"></div>
 <script>
@@ -112,6 +113,7 @@
     aquarium:{water:"#5ba4bb",deep:"#245b77",soil:"#d2bd98",ground:"#65b1ac",light:"#a0d5cb",shadow:"#427e85",trees:"#308f82",trunk:"#846c58",roof:"#d59c87"}
   };
   let selected = "nature", waterArea = "river", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
+  let displayState={connected:false,selected:null,battery:null};
   let audioState = {connected:false,level:null,band:null};
   let motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};
   let lastShakeId=null, shakeUntil=0;
@@ -126,6 +128,19 @@
   const $ = id => document.getElementById(id);
   const canvas = $("world-canvas"), ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
+  // The bundled PNGs are the same master illustrations used to build the
+  // microcontroller's RGB565 frames. Only animation is browser-specific.
+  const artNames = [...worlds,"river","deepsea"];
+  const assetBase = location.protocol === "file:" ? "../design/assets/" : "/assets/";
+  const worldArt = {};
+  if(typeof Image!=="undefined")artNames.forEach(name=>{
+    worldArt[name]={};
+    ["young","mature"].forEach(phase=>{
+      const img=new Image();
+      img.src=assetBase+name+"-"+phase+".png";
+      worldArt[name][phase]=img;
+    });
+  });
   const startTime = Date.now();
   let demoMinutes = 0;
 
@@ -250,7 +265,65 @@
     if(!river && !deep && area.visitors>0)pixelFish(175+Math.sin(t/5000)*68,96,2.5,"#a3c6b6");
     if(deep && area.visitors>0){rect(160+Math.sin(t/2500)*28,142,45,17,"#7d91a7");rect(203,136,5,3,"#ffe98b");}
   }
+  function illustratedScene(world,t){
+    const artId=selected==="aquarium"?(waterArea==="ocean"?"aquarium":waterArea):selected;
+    const pair=worldArt[artId];
+    if(!pair || !pair.young.complete || !pair.mature.complete ||
+       !pair.young.naturalWidth || !pair.mature.naturalWidth)return false;
+    const progress=Math.min(1,Math.max(0,(world.minutes||0)/(30*1440)));
+    const seed=world.seed||13579,water=selected==="aquarium";
+    ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
+    ctx.save();
+    if(motionState.connected)ctx.translate(motionState.tilt_x*7,motionState.tilt_y*7);
+    if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
+    ctx.drawImage(pair.young,0,0,360,360);
+    if(progress>0){ctx.globalAlpha=progress;ctx.drawImage(pair.mature,0,0,360,360);ctx.globalAlpha=1;}
+    // A small amount of real motion animates the richly illustrated scenery.
+    if(water){
+      const area=(world.water_areas||{})[waterArea]||{};
+      const many=Math.min(12,Math.max(2,area.fish||2));
+      for(let i=0;i<many;i++){
+        const x=(t/(82+i*9)+i*77)%430-35;
+        const y=85+hash(i,29,seed)*170+Math.sin(t/1200+i*3)*8;
+        const size=waterArea==="deepsea"?0.42:0.52;
+        ctx.globalAlpha=waterArea==="deepsea"?.55:.67;
+        pixelFish(x,y,size,waterArea==="deepsea"?"#8ce4f0":waterArea==="river"?"#bfdecd":"#f4c68b",i%2?-1:1);
+      }
+      ctx.globalAlpha=1;
+      const bubbleCount=waterArea==="deepsea"?14:24;
+      for(let i=0;i<bubbleCount;i++){
+        const x=30+hash(i,98,seed)*300;
+        const y=(hash(i,99,seed)*390-t/(35+i%8*9)+4000)%390;
+        ctx.fillStyle=waterArea==="deepsea"?"#8cc9e899":"#ddfcf0aa";
+        ctx.beginPath();ctx.arc(x,y,1+i%3,0,Math.PI*2);ctx.fill();
+      }
+      if(audioState.connected&&audioState.band==="loud")for(let i=0;i<3;i++){
+        ctx.strokeStyle="#e1fbff88";ctx.lineWidth=2;ctx.beginPath();
+        ctx.ellipse(180,45,24+i*19+Math.sin(t/390)*9,5+i*3,0,0,Math.PI*2);ctx.stroke();
+      }
+    }else{
+      const particles=selected==="fantasy"?20:selected==="forest"?10:7;
+      for(let i=0;i<particles;i++){
+        const x=45+hash(i,81,seed)*270+Math.sin(t/1500+i)*7;
+        const y=70+hash(i,82,seed)*215+Math.cos(t/1300+i)*5;
+        ctx.globalAlpha=.3+.5*(.5+.5*Math.sin(t/550+i*2));
+        ctx.fillStyle=selected==="fantasy"?"#eee1ff":selected==="forest"?"#f9eab4":"#e3ffdc";
+        ctx.fillRect(x,y,selected==="fantasy"?3:2,selected==="fantasy"?3:2);
+      }
+      ctx.globalAlpha=1;
+      if(world.weather==="rain"){
+        ctx.strokeStyle="#d8eaf4a0";ctx.lineWidth=1.4;ctx.beginPath();
+        for(let i=0;i<32;i++){
+          const x=hash(i,71,seed)*360,y=(hash(i,72,seed)*360+t/19)%360;
+          ctx.moveTo(x,y);ctx.lineTo(x-4,y+11);
+        }ctx.stroke();
+      }
+    }
+    ctx.restore();hitAreas=[];drawShakeSparkles(t);ctx.restore();
+    return true;
+  }
   function drawScene(world, t){
+    if(illustratedScene(world,t))return;
     const p=palette[selected], minute=world.minutes||0;
     ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
     rect(0,0,360,360,p.water);ctx.save();
@@ -335,6 +408,11 @@
   }
   function render(){
     const w=getWorld();updateWaterTabs(w);
+    $("device-select").hidden=!live||!displayState.connected;
+    const battery=displayState.battery;
+    $("device-status").textContent=!live?"デモ鑑賞中":!displayState.connected?"丸形画面の接続を確認中":
+      "本体の画面："+(defaults[displayState.selected]?.name||"確認中")+
+      (battery&&typeof battery.voltage==="number"?" ・ 電池 "+battery.voltage.toFixed(2)+"V"+(battery.low?" ⚠ 充電残量に注意":""):"");
     const isWater=selected==="aquarium";
     $("world-title").textContent=isWater?waterNames[waterArea]:w.name;
     $("subtitle").textContent=defaults[selected].label;
@@ -368,6 +446,7 @@
       if(!response.ok)throw Error("No ESP32 API");const data=await response.json();
       if(!Array.isArray(data.worlds)||data.worlds.length!==6)throw Error("Bad state");
       current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
+      displayState=data.display||{connected:false,selected:null,battery:null};
       audioState=data.audio&&typeof data.audio.connected==="boolean"?data.audio:{connected:false,level:null,band:null};
       motionState=data.motion&&typeof data.motion.connected==="boolean"?data.motion:{connected:false,tilt_x:0,tilt_y:0,shake_id:0};
       if(motionState.connected&&lastShakeId!==null&&motionState.shake_id>lastShakeId)shakeUntil=Date.now()+1800;
@@ -376,6 +455,7 @@
     }catch(err){
       if(live)showToast("ESP32との通信が切れました。再接続を待っています。");
       live=false;current=Object.fromEntries(makeDemo().map(w=>[w.id,w]));audioState={connected:false,level:null,band:null};
+      displayState={connected:false,selected:null,battery:null};
       motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};lastShakeId=null;
       $("connection").textContent="● デモ表示";$("connection").classList.add("demo");
     }
@@ -384,6 +464,15 @@
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>setWorld(btn.dataset.world)));
   document.querySelectorAll('.water-tab').forEach(btn=>btn.addEventListener('click',()=>setWaterArea(btn.dataset.area)));
   $("zoom-btn").addEventListener("click",()=>{enlarged=!enlarged;$("zoom-btn").textContent=enlarged?"元に戻す −":"拡大する ＋";});
+  $("device-select").addEventListener("click",async()=>{
+    if(!live||!displayState.connected)return;
+    try{
+      const response=await fetch("/api/display/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({world:selected})});
+      if(!response.ok)throw Error("本体に送れませんでした");
+      showToast("☀ サンニーに"+defaults[selected].name+"を表示しました");
+      await fetchState();
+    }catch(err){showToast("画面切替に失敗しました。通信を確認してね");}
+  });
   canvas.addEventListener('click',async ev=>{
     const r=canvas.getBoundingClientRect(),x=(ev.clientX-r.left)*360/r.width,y=(ev.clientY-r.top)*360/r.height;
     const px=enlarged?(x-180)/1.32+180:x,py=enlarged?(y-180)/1.32+180:y;

@@ -1,4 +1,4 @@
-# サンニー Companion — Android専用アプリ（ソース v0.4）
+# サンニー Companion — Android専用アプリ（ソース v0.5）
 
 Nothing Phone (4a) ProなどAndroid端末から、ESP32-S3「サンニー」のPocket Worldを観察し、画像・データ・ゲームロジックを無線アップロードするためのネイティブアプリです。
 
@@ -6,6 +6,7 @@ Nothing Phone (4a) ProなどAndroid端末から、ESP32-S3「サンニー」のP
 
 - **観察:** ESP32のローカルWi-Fiに接続し、6つの世界をWebViewで大きく表示。水の世界では川・海・深海を切り替え。ESP32側の実データを使用
 - **更新:** Android標準のファイル選択画面からファイルを選び、認証キー付きでESP32へ送信
+- **完成ワールドパック:** アプリに同梱した16枚のPNG・16枚の丸形画面用RGB565データ・`index.html`の計33ファイルをボタン一つで順次送信（通信中断時は再実行）
 - **再起動:** `world_model.py` のアップロード後にサンニーの再起動を指示
 - **設定:** Wi-Fi設定を開く、接続確認、更新キーの保存
 - **v0.4 電源:** 朝の起床時刻・退勤時刻をサンニーに送信して保存、時刻をスマホから同期。土日祝日OFFの予定を管理（**実機スリープは安全ロック中**）
@@ -29,7 +30,7 @@ Gradle Wrapperのjarは同梱していないため、Android Studioでの同期�
 
 ## ESP32側の準備
 
-同じパッケージ内の `PocketWorld/README.md` に従って、まずMicroPythonと `main.py`、`world_model.py`、`safe_update.py`、`settings.py`、`index.html`、v0.4の `power_runtime.py`、`work_schedule.py`、`qmi8658.py`、`motion_effects.py`、`/assets/jp_holidays.json` を転送します。
+同じパッケージ内の `PocketWorld/README.md` に従って、まずMicroPythonと `main.py`、`world_model.py`、`safe_update.py`、`settings.py`、`round_screen.py`、`index.html`、`power_runtime.py`、`work_schedule.py`、`qmi8658.py`、`motion_effects.py`、`inmp441.py`、`/assets/jp_holidays.json` を転送します。初回はPNGと`.dat`の素材も転送し、以降の素材更新はアプリから行えます。
 
 - `settings.py` の `AP_SSID`：`SANNY-ESP32`
 - `AP_PASSWORD`：自分専用の長いWi-Fiパスワードに変更
@@ -46,7 +47,7 @@ Gradle Wrapperのjarは同梱していないため、Android Studioでの同期�
 | `tree.png` | `/assets/tree.png` | 128KiBまで。利用にはゲームコード側の参照処理が必要 |
 | `data.json` | `/assets/data.json` | 同上 |
 
-`main.py`、`settings.py`、ファームウェア `.bin`、ZIP一括転送、フォルダ全体の差分同期は未対応です。
+`main.py`、`settings.py`、ファームウェア `.bin`、任意ZIP一括転送、フォルダ全体の差分同期は未対応です。同梱済み33ファイルの一括更新のみ対応しています。更新パックを作り直す場合はリポジトリ直下で`node PocketWorld/tools/build_display_assets.js`を実行します。
 
 ## セキュリティ・制限
 
