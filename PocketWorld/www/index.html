@@ -82,6 +82,7 @@
       <section class="panel"><h3>世界のようす <span>LIVE STATUS</span></h3><div class="stats" id="stats"></div></section>
       <section class="panel"><h3>観察ノート <span>FIELD NOTES</span></h3><div class="timebox"><span>経過時間</span><b id="elapsed">0分</b></div><div class="timebox"><span>現在の発展段階</span><b id="stage">誕生したばかり</b></div><div class="timebox"><span>更新</span><b id="sync">5秒ごと</b></div></section>
       <section class="panel"><h3>🎤 音で変わる世界 <span>SOUND REACTIONS</span></h3><p class="sound-description" id="sound-description">周囲の音で小さな世界が変化します。</p><div class="timebox"><span>マイクの状態</span><b id="sound-status">外付けマイク待ち</b></div><div class="timebox"><span>音のようす</span><b id="sound-level">未計測</b></div></section>
+      <section class="panel"><h3>🌀 手の中の重力 <span>GYRO / MOTION</span></h3><p class="sound-description">サンニーを傾けると、世界が少しだけ重力に反応します。振るイベントは初期設定ではOFFです。</p><div class="timebox"><span>6軸センサー</span><b id="motion-status">実機接続待ち</b></div><div class="timebox"><span>傾き</span><b id="motion-tilt">未計測</b></div></section>
       <section class="panel"><h3>最近のできごと <span>EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
     </div>
   </div>
@@ -112,6 +113,8 @@
   };
   let selected = "nature", waterArea = "river", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
   let audioState = {connected:false,level:null,band:null};
+  let motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};
+  let lastShakeId=null, shakeUntil=0;
   const soundDescriptions = {
     nature:"静かなら晴れ、音が増えると風、にぎやかになると雨。自然が音に反応します。",
     city:"作業音や話し声などの活気が続くと、住民が増えて建物が育ちます。",
@@ -251,11 +254,13 @@
     const p=palette[selected], minute=world.minutes||0;
     ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
     rect(0,0,360,360,p.water);ctx.save();
+    // Physical tilt affects presentation only; world growth/save data stays intact.
+    if(motionState.connected)ctx.translate(motionState.tilt_x*7,motionState.tilt_y*7);
     if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
     if(selected==="forest" || selected==="aquarium"){
       hitAreas=[];
       if(selected==="forest")drawForest(world,t);else drawAquarium(world,t);
-      ctx.restore();ctx.restore();return;
+      ctx.restore();drawShakeSparkles(t);ctx.restore();return;
     }
     const size=12, cols=30;hitAreas=[];
     for(let gy=0;gy<cols;gy++)for(let gx=0;gx<cols;gx++){
@@ -304,7 +309,15 @@
       ctx.strokeStyle="#c3e3e5aa";ctx.lineWidth=2;ctx.beginPath();
       for(let i=0;i<38;i++){const x=hash(i,71,world.seed)*360,y=(hash(i,72,world.seed)*360+t/17)%360;ctx.moveTo(x,y);ctx.lineTo(x-6,y+14);}ctx.stroke();
     }
-    ctx.restore();
+    drawShakeSparkles(t);ctx.restore();
+  }
+  function drawShakeSparkles(t){
+    if(Date.now()>shakeUntil)return;
+    const color=selected==="aquarium"?"#d6f6ff":selected==="forest"?"#ffeb9c":"#f5e6ad";
+    for(let i=0;i<16;i++){
+      const x=36+hash(i,91,7331)*290,y=30+hash(i,92,7331)*290;
+      rect(x,y+Math.sin(t/240+i)*4,3,3,color);
+    }
   }
   function updateWaterTabs(w){
     const tabs=$("water-tabs");tabs.hidden=selected!=="aquarium";
@@ -342,6 +355,8 @@
     $("sound-description").textContent=soundDescriptions[selected];
     $("sound-status").textContent=audioState.connected?"反応中":"外付けマイク待ち";
     $("sound-level").textContent=audioState.connected?({quiet:"静か",active:"活動中",loud:"にぎやか"}[audioState.band]||"計測中")+" ・ "+audioState.level+"/100":"未計測";
+    $("motion-status").textContent=motionState.connected?"傾きに反応中":"実機接続待ち";
+    $("motion-tilt").textContent=motionState.connected?"横 "+Math.round(motionState.tilt_x*100)+"% / 縦 "+Math.round(motionState.tilt_y*100)+"%":"未計測";
     const list=(w.events||[]).slice(-4).reverse();$("events").replaceChildren(...(list.length?list:["この世界が誕生しました"]).map(msg=>{const li=document.createElement("li");li.textContent=msg;return li;}));
   }
   function setWorld(id){if(!worlds.includes(id))return;selected=id;document.querySelectorAll('.tab').forEach(el=>{const active=el.dataset.world===id;el.classList.toggle('active',active);el.setAttribute('aria-pressed',active);});render();}
@@ -354,10 +369,14 @@
       if(!Array.isArray(data.worlds)||data.worlds.length!==6)throw Error("Bad state");
       current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
       audioState=data.audio&&typeof data.audio.connected==="boolean"?data.audio:{connected:false,level:null,band:null};
+      motionState=data.motion&&typeof data.motion.connected==="boolean"?data.motion:{connected:false,tilt_x:0,tilt_y:0,shake_id:0};
+      if(motionState.connected&&lastShakeId!==null&&motionState.shake_id>lastShakeId)shakeUntil=Date.now()+1800;
+      if(motionState.connected)lastShakeId=motionState.shake_id;
       live=true;$("connection").textContent="● ESP32に接続中";$("connection").classList.remove("demo");
     }catch(err){
       if(live)showToast("ESP32との通信が切れました。再接続を待っています。");
       live=false;current=Object.fromEntries(makeDemo().map(w=>[w.id,w]));audioState={connected:false,level:null,band:null};
+      motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};lastShakeId=null;
       $("connection").textContent="● デモ表示";$("connection").classList.add("demo");
     }
     render();

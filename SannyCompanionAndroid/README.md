@@ -1,4 +1,4 @@
-# サンニー Companion — Android専用アプリ（ソース v0.3）
+# サンニー Companion — Android専用アプリ（ソース v0.4）
 
 Nothing Phone (4a) ProなどAndroid端末から、ESP32-S3「サンニー」のPocket Worldを観察し、画像・データ・ゲームロジックを無線アップロードするためのネイティブアプリです。
 
@@ -8,12 +8,14 @@ Nothing Phone (4a) ProなどAndroid端末から、ESP32-S3「サンニー」のP
 - **更新:** Android標準のファイル選択画面からファイルを選び、認証キー付きでESP32へ送信
 - **再起動:** `world_model.py` のアップロード後にサンニーの再起動を指示
 - **設定:** Wi-Fi設定を開く、接続確認、更新キーの保存
+- **v0.4 電源:** 朝の起床時刻・退勤時刻をサンニーに送信して保存、時刻をスマホから同期。土日祝日OFFの予定を管理（**実機スリープは安全ロック中**）
+- **v0.4 モーション:** 6軸センサーの状態を取得し、「振るとキラキラ」演出を認証付きでON/OFF
 
 アプリはSANNY-ESP32のWi-Fi経由で、固定IP `192.168.4.1` と通信します。クラウドサーバー、広告、ユーザーアカウントはありません。
 
 ## APKビルド手順
 
-この成果物には**Android Studioのソースプロジェクト**が含まれています。**APKファイルはまだ生成・実機検証していません。**
+Android StudioのソースプロジェクトとGitHub Actionsビルド設定があります。APKのビルドは自動処理で検証しますが、**AndroidとESP32の実機連携は未検証**です。
 
 1. Android Studioを開き、`SannyCompanionAndroid` フォルダをプロジェクトとして選びます。
 2. Android SDK Platform 35と対応するBuild Tools、JDK 17をセットアップします。
@@ -27,7 +29,7 @@ Gradle Wrapperのjarは同梱していないため、Android Studioでの同期�
 
 ## ESP32側の準備
 
-同じパッケージ内の `PocketWorld/README.md` に従って、まずMicroPythonと `main.py`、`world_model.py`、`safe_update.py`、`settings.py`、`index.html` を転送します。
+同じパッケージ内の `PocketWorld/README.md` に従って、まずMicroPythonと `main.py`、`world_model.py`、`safe_update.py`、`settings.py`、`index.html`、v0.4の `power_runtime.py`、`work_schedule.py`、`qmi8658.py`、`motion_effects.py`、`/assets/jp_holidays.json` を転送します。
 
 - `settings.py` の `AP_SSID`：`SANNY-ESP32`
 - `AP_PASSWORD`：自分専用の長いWi-Fiパスワードに変更

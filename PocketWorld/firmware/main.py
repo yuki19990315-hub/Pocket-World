@@ -1,4 +1,4 @@
-"""MicroPython HTTP endpoint for Pocket World + Sanny Companion v0.3.
+"""MicroPython HTTP endpoint for Pocket World + Sanny Companion v0.4.
 
 Upload main.py, safe_update.py, world_model.py, settings.py and /index.html
 to the board's root filesystem. This first prototype provides the shared world
@@ -14,11 +14,14 @@ import time
 import settings
 from world_model import PocketWorld
 from safe_update import receive_update
+from power_runtime import PowerRuntime
+from motion_effects import MotionEffects
 
 SAVE_FILE = "worlds.json"
 SAVE_TEMP = "worlds.tmp"
 SAVE_BACKUP = "worlds.bak"
 SAVE_INTERVAL = 300  # seconds; avoid excessive flash writes
+MOTION_SETTINGS_FILE = "motion_settings.json"
 
 
 def load_worlds():
@@ -129,7 +132,49 @@ def authorized(headers):
             and headers.get("x-admin-key") == expected)
 
 
-def service(client, engine):
+def json_request(client, headers, first_body, maximum=2048):
+    size = int(headers.get("content-length", "-1"))
+    if size < 1 or size > maximum:
+        raise ValueError("Invalid JSON length")
+    data = bytearray(first_body)
+    if len(data) > size:
+        raise ValueError("Unexpected request bytes")
+    while len(data) < size:
+        more = client.recv(min(1024, size - len(data)))
+        if not more:
+            raise ValueError("Incomplete JSON request")
+        data.extend(more)
+    parsed = json.loads(data.decode("utf-8"))
+    if not isinstance(parsed, dict):
+        raise ValueError("JSON object required")
+    return parsed
+
+
+def load_motion_settings(motion):
+    try:
+        with open(MOTION_SETTINGS_FILE, "r") as handle:
+            value = json.load(handle)
+        if isinstance(value.get("shake_enabled"), bool):
+            motion.shake_enabled = value["shake_enabled"]
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+
+
+def save_motion_settings(enabled):
+    with open(MOTION_SETTINGS_FILE + ".tmp", "w") as handle:
+        json.dump({"shake_enabled": enabled}, handle)
+    try:
+        os.remove(MOTION_SETTINGS_FILE + ".bak")
+    except OSError:
+        pass
+    try:
+        os.rename(MOTION_SETTINGS_FILE, MOTION_SETTINGS_FILE + ".bak")
+    except OSError:
+        pass
+    os.rename(MOTION_SETTINGS_FILE + ".tmp", MOTION_SETTINGS_FILE)
+
+
+def service(client, engine, power=None, motion=None):
     client.settimeout(7)
     try:
         method, path, headers, body = parse_request(client)
@@ -141,15 +186,61 @@ def service(client, engine):
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.3", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.4", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):
         clock = query_param(path, "clock")
         changed = engine.reconcile_clock(clock) if clock else 0
-        response(client, "200 OK", "application/json; charset=utf-8",
-                 json.dumps(engine.snapshot()))
+        snapshot = engine.snapshot()
+        snapshot["motion"] = motion.snapshot() if motion is not None else {
+            "connected": False, "tilt_x": 0, "tilt_y": 0, "shake_id": 0}
+        response(client, "200 OK", "application/json; charset=utf-8", json.dumps(snapshot))
         return bool(changed)
+    elif method == "GET" and path == "/api/power":
+        data = power.status() if power is not None else PowerRuntime().status()
+        response(client, "200 OK", "application/json", json.dumps(data))
+    elif method == "GET" and path == "/api/motion":
+        response(client, "200 OK", "application/json",
+                 json.dumps(motion.snapshot() if motion is not None else {"connected": False}))
+    elif method == "POST" and path == "/api/motion/settings":
+        if not authorized(headers):
+            response(client, "403 Forbidden", "application/json", '{"error":"Invalid admin key"}')
+            return False
+        if motion is None:
+            response(client, "503 Service Unavailable", "application/json", '{"error":"Motion unavailable"}')
+            return False
+        try:
+            value = json_request(client, headers, body)
+            enabled = value["shake_enabled"]
+            if not isinstance(enabled, bool) or len(value) != 1:
+                raise ValueError("shake_enabled must be boolean")
+            save_motion_settings(enabled)
+            motion.shake_enabled = enabled
+            response(client, "200 OK", "application/json", json.dumps(motion.snapshot()))
+        except (KeyError, ValueError, OSError, TypeError) as exc:
+            response(client, "400 Bad Request", "application/json", json.dumps({"error": str(exc)}))
+    elif method == "POST" and path in ("/api/power/schedule", "/api/time"):
+        if not authorized(headers):
+            response(client, "403 Forbidden", "application/json", '{"error":"Invalid admin key"}')
+            return False
+        if power is None:
+            response(client, "503 Service Unavailable", "application/json", '{"error":"Power service unavailable"}')
+            return False
+        try:
+            payload = json_request(client, headers, body)
+            # Validate the supplied clock before persisting new settings.
+            stamp = int(payload["clock"])
+            if not 1577836800 <= stamp < 4102444800:
+                raise ValueError("Clock is outside supported range")
+            if path == "/api/power/schedule":
+                power.update_schedule(payload["schedule"])
+            power.sync_clock(stamp)
+            changed = engine.reconcile_clock(stamp)
+            response(client, "200 OK", "application/json", json.dumps(power.status()))
+            return bool(changed)
+        except (ValueError, TypeError, KeyError, OSError) as exc:
+            response(client, "400 Bad Request", "application/json", json.dumps({"error": str(exc)}))
     elif method == "POST" and path.startswith("/api/touch"):
         ident = query_param(path, "world")
         success = engine.tap(ident)
@@ -183,22 +274,55 @@ def service(client, engine):
 
 def main():
     engine = load_worlds()
-    configure_wifi()
+    power = PowerRuntime(getattr(settings, "ENABLE_DEEP_SLEEP", False))
+    motion = MotionEffects()
+    load_motion_settings(motion)
+    sensor = None
+    try:
+        import machine
+        power.restore_timer_wake(machine.reset_cause() == machine.DEEPSLEEP_RESET)
+        if getattr(settings, "ENABLE_MOTION_SENSOR", True):
+            from qmi8658 import QMI8658
+            bus = machine.I2C(0, sda=machine.Pin(6), scl=machine.Pin(7), freq=400000)
+            sensor = QMI8658(bus)
+    except (ImportError, OSError, ValueError, AttributeError) as exc:
+        print("Motion sensor unavailable:", exc)
+    if power.now() is not None:
+        engine.reconcile_clock(power.now())
+    ap = None
+    # Silent background wake: the weekend world grows while the LCD stays dark.
+    if power.plan_sleep() is not None:
+        enter_sleep(engine, power, sensor, ap)
+    ap = configure_wifi()
     address = socket.getaddrinfo("0.0.0.0", settings.PORT)[0][-1]
     server = socket.socket()
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(address)
     server.listen(2)
-    server.settimeout(0.8)
+    server.settimeout(0.12)
     print("Sanny Pocket World ready on http://192.168.4.1/")
 
     previous = time.ticks_ms()
     elapsed_ms = 0
     since_save = 0
+    motion_ms = 0
+    uptime_ms = 0
     while True:
         now = time.ticks_ms()
-        elapsed_ms += max(0, time.ticks_diff(now, previous))
+        delta = max(0, time.ticks_diff(now, previous))
+        elapsed_ms += delta
+        power.tick(delta)
+        motion_ms += delta
+        uptime_ms += delta
         previous = now
+        if sensor is not None and motion_ms >= 100:
+            motion_ms %= 100
+            try:
+                acceleration, angular_rate = sensor.read()
+                motion.observe(acceleration, angular_rate, uptime_ms)
+            except OSError as exc:
+                print("Motion read failed, disabling sensor:", exc)
+                sensor = None
         if elapsed_ms >= 1000:
             seconds = elapsed_ms // 1000
             elapsed_ms %= 1000
@@ -207,13 +331,15 @@ def main():
         if since_save >= SAVE_INTERVAL:
             save_worlds(engine)
             since_save = 0
+        if power.plan_sleep() is not None:
+            enter_sleep(engine, power, sensor, ap)
         try:
             client, _ = server.accept()
         except OSError:
             continue
         result = False
         try:
-            result = service(client, engine)
+            result = service(client, engine, power, motion)
             if result is True:
                 save_worlds(engine)
                 since_save = 0
@@ -227,6 +353,24 @@ def main():
             time.sleep_ms(400)
             import machine
             machine.reset()
+
+
+def enter_sleep(engine, power, sensor, ap):
+    """Optional path; only reachable after hardware sleep is explicitly enabled."""
+    seconds = power.plan_sleep()
+    if seconds is None:
+        return
+    # Save an exact wall-time anchor before entering MicroPython deep sleep.
+    engine.last_wall_epoch = power.now()
+    engine.runtime_since_boot = 0
+    save_worlds(engine)
+    power.write_wake_marker(power.now() + seconds)
+    if sensor is not None:
+        sensor.standby()
+    if ap is not None:
+        ap.active(False)
+    import machine
+    machine.deepsleep(seconds * 1000)
 
 
 if __name__ == "__main__":

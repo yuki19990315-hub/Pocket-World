@@ -2,6 +2,7 @@ package com.sanny.pocketworld;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.TimePickerDialog;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.database.Cursor;
@@ -29,6 +30,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -300,7 +302,129 @@ public class MainActivity extends Activity {
         Button save=secondary("この端末に保存");
         save.setOnClickListener(v->{preferences.edit().putString("admin_key",key.getText().toString()).apply();Toast.makeText(this,"保存したよ",Toast.LENGTH_SHORT).show();});
         add(safety,save,46,8);
+
+        LinearLayout routine=vertical(17);
+        routine.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
+        add(col,routine,-2,16);
+        add(routine,label("🌙 サンニーの生活時間",17,ACCENT,true),-2,9);
+        add(routine,label("平日は指定した時間だけ活動。土日と日本の祝日・振替休日は画面を消して休む設定です。",12,MUTED,false),-2,12);
+        Switch scheduleEnabled=new Switch(this);
+        scheduleEnabled.setText("自動起床・スリープを使う");
+        scheduleEnabled.setTextColor(Color.WHITE);
+        scheduleEnabled.setChecked(false);
+        add(routine,scheduleEnabled,-2,10);
+
+        final String[] wakeHour={"08:00"};final String[] sleepHour={"18:00"};
+        Button wakeButton=secondary("☀ 起床 08:00");
+        wakeButton.setOnClickListener(v->pickScheduleTime(wakeHour,wakeButton,"☀ 起床"));
+        add(routine,wakeButton,46,9);
+        Button sleepButton=secondary("🌙 就寝 18:00");
+        sleepButton.setOnClickListener(v->pickScheduleTime(sleepHour,sleepButton,"🌙 就寝"));
+        add(routine,sleepButton,46,11);
+        TextView powerStatus=label("まず『サンニーから設定を取得』を押してね。",12,MUTED,false);
+        add(routine,powerStatus,-2,11);
+        Button loadSchedule=secondary("サンニーから設定を取得");
+        loadSchedule.setOnClickListener(v->fetchPowerSchedule(scheduleEnabled,wakeHour,sleepHour,
+            wakeButton,sleepButton,powerStatus));
+        add(routine,loadSchedule,46,9);
+        Button saveSchedule=action("設定をサンニーに保存");
+        saveSchedule.setOnClickListener(v->savePowerSchedule(scheduleEnabled.isChecked(),wakeHour[0],sleepHour[0],powerStatus));
+        add(routine,saveSchedule,46,9);
+        Button syncClock=secondary("現在時刻をサンニーと同期");
+        syncClock.setOnClickListener(v->syncSannyClock(powerStatus));
+        add(routine,syncClock,46,12);
+        add(routine,label("※ ESP32本体にもv0.4のmain.pyが必要。画面OFF・深いスリープは実機検証前のため安全ロック中で、時刻設定を保存してもまだ自動休眠しません。",12,MUTED,false),-2,5);
+
+        LinearLayout motionBox=vertical(17);
+        motionBox.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
+        add(col,motionBox,-2,16);
+        add(motionBox,label("🌀 小さな世界と重力",17,ACCENT,true),-2,8);
+        add(motionBox,label("傾きはセンサー接続時に自動反応。振ったときの小さな演出は誤動作防止のため初期OFFです。",12,MUTED,false),-2,11);
+        Switch shakeEnabled=new Switch(this);
+        shakeEnabled.setText("振るとキラキラの演出を出す");
+        shakeEnabled.setTextColor(Color.WHITE);
+        add(motionBox,shakeEnabled,-2,11);
+        TextView motionStatus=label("センサー情報は未取得",12,MUTED,false);
+        add(motionBox,motionStatus,-2,10);
+        Button motionLoad=secondary("ジャイロ設定を取得");
+        motionLoad.setOnClickListener(v->fetchMotionSettings(shakeEnabled,motionStatus));
+        add(motionBox,motionLoad,46,10);
+        Button motionSave=action("ジャイロ設定をサンニーに保存");
+        motionSave.setOnClickListener(v->saveMotionSettings(shakeEnabled.isChecked(),motionStatus));
+        add(motionBox,motionSave,46,5);
         add(col,label("通信はサンニーのローカルWi-Fi内で行います。更新キーとWi-Fiパスワードは他人に見せないでね。",12,MUTED,false),-2,6);
+    }
+
+    private void pickScheduleTime(String[] value, Button button, String label) {
+        String[] parts=value[0].split(":");
+        new TimePickerDialog(this,(picker,hour,minute)->{
+            value[0]=String.format(java.util.Locale.ROOT,"%02d:%02d",hour,minute);
+            button.setText(label+" "+value[0]);
+        },Integer.parseInt(parts[0]),Integer.parseInt(parts[1]),true).show();
+    }
+
+    private void fetchPowerSchedule(Switch enabled, String[] wake, String[] sleep,
+                                    Button wakeButton, Button sleepButton, TextView status) {
+        preferWifiRoute();status.setText("サンニーから取得中…");
+        new Thread(()->{
+            try {
+                JSONObject data=new JSONObject(SannyApi.power());
+                JSONObject schedule=data.getJSONObject("schedule");
+                String start=schedule.getString("wake"),end=schedule.getString("sleep");
+                boolean active=schedule.getBoolean("enabled");
+                String info="現在の設定を読み込みました。"+
+                    (data.optBoolean("sleep_supported")?" スリープ制御あり。":" 実機検証待ちのため自動スリープは安全ロック中。")+
+                    (data.optBoolean("clock_synced")?" 時計同期済み。":" 時計の同期が必要。")+
+                    ("unknown".equals(data.optString("mode"))?" 祝日データの更新が必要。":"");
+                runOnUiThread(()->{wake[0]=start;sleep[0]=end;enabled.setChecked(active);
+                    wakeButton.setText("☀ 起床 "+start);sleepButton.setText("🌙 就寝 "+end);
+                    status.setText(info);setConnected(true);});
+            }catch(Exception err){runOnUiThread(()->status.setText("取得できません："+err.getMessage()+"（本体はv0.4が必要）"));}
+        }).start();
+    }
+
+    private void savePowerSchedule(boolean enabled, String wake, String sleep, TextView status) {
+        final String secret=preferences.getString("admin_key", "");
+        preferWifiRoute();status.setText("サンニーへ保存中…");
+        new Thread(()->{
+            try{
+                JSONObject data=new JSONObject(SannyApi.setPowerSchedule(enabled,wake,sleep,secret));
+                String result="✓ サンニー本体へ保存しました。"+
+                    (data.optBoolean("sleep_supported")?"":" 休眠動作は実機検証待ちで無効です。");
+                runOnUiThread(()->{status.setText(result);setConnected(true);});
+            }catch(Exception err){runOnUiThread(()->status.setText("保存できませんでした（未反映）："+err.getMessage()));}
+        }).start();
+    }
+
+    private void syncSannyClock(TextView status) {
+        final String secret=preferences.getString("admin_key", "");preferWifiRoute();
+        status.setText("時刻を同期中…");
+        new Thread(()->{
+            try{SannyApi.syncTime(secret);runOnUiThread(()->status.setText("✓ 本体の時刻を同期しました。"));}
+            catch(Exception err){runOnUiThread(()->status.setText("同期できません："+err.getMessage()));}
+        }).start();
+    }
+
+    private void fetchMotionSettings(Switch enabled, TextView status) {
+        preferWifiRoute();status.setText("ジャイロ設定を取得中…");
+        new Thread(()->{
+            try{
+                JSONObject data=new JSONObject(SannyApi.motion());
+                boolean shake=data.optBoolean("shake_enabled",false);
+                String info=data.optBoolean("connected")?"6軸センサーが応答しています。":"センサーは未接続・未確認です。";
+                runOnUiThread(()->{enabled.setChecked(shake);status.setText(info);});
+            }catch(Exception err){runOnUiThread(()->status.setText("取得できません："+err.getMessage()));}
+        }).start();
+    }
+
+    private void saveMotionSettings(boolean enabled, TextView status) {
+        final String secret=preferences.getString("admin_key","");preferWifiRoute();
+        status.setText("本体に保存中…");
+        new Thread(()->{
+            try{SannyApi.setShakeEvents(enabled,secret);
+                runOnUiThread(()->status.setText("✓ 本体に保存しました（振動演出："+(enabled?"ON":"OFF")+"）"));}
+            catch(Exception err){runOnUiThread(()->status.setText("保存できませんでした（未反映）："+err.getMessage()));}
+        }).start();
     }
 
     private void openWifiSettings() {

@@ -6,6 +6,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.Locale;
 
 /** Local-only protocol for the SANNY ESP32. No cloud account or server. */
 public final class SannyApi {
@@ -74,6 +75,51 @@ public final class SannyApi {
         HttpURLConnection connection = request("/api/info", "GET", null);
         try { return readResponse(connection); }
         finally { connection.disconnect(); }
+    }
+
+    public static String power() throws IOException {
+        HttpURLConnection connection = request("/api/power", "GET", null);
+        try { return readResponse(connection); }
+        finally { connection.disconnect(); }
+    }
+
+    public static String scheduleJson(boolean enabled, String wake, String sleep, long utcSeconds) throws IOException {
+        if (wake == null || sleep == null || !wake.matches("[0-9]{2}:[0-9]{2}") || !sleep.matches("[0-9]{2}:[0-9]{2}"))
+            throw new IOException("時刻はHH:MM形式で設定してください");
+        return String.format(Locale.ROOT,
+            "{\"clock\":%d,\"schedule\":{\"enabled\":%s,\"wake\":\"%s\",\"sleep\":\"%s\",\"exclude_jp_holidays\":true,\"timezone\":\"Asia/Tokyo\"}}",
+            utcSeconds, enabled ? "true" : "false", wake, sleep);
+    }
+
+    private static String sendJson(String path, String body, String secret) throws IOException {
+        if (secret == null || secret.trim().isEmpty()) throw new IOException("管理用キーを設定してください");
+        byte[] bytes = body.getBytes("UTF-8");
+        HttpURLConnection connection = request(path, "POST", secret);
+        try {
+            connection.setRequestProperty("Content-Type", "application/json");
+            connection.setDoOutput(true);
+            connection.setFixedLengthStreamingMode(bytes.length);
+            try (OutputStream out = connection.getOutputStream()) { out.write(bytes); }
+            return readResponse(connection);
+        } finally { connection.disconnect(); }
+    }
+
+    public static String setPowerSchedule(boolean enabled, String wake, String sleep, String secret) throws IOException {
+        return sendJson("/api/power/schedule", scheduleJson(enabled, wake, sleep, System.currentTimeMillis() / 1000), secret);
+    }
+
+    public static String syncTime(String secret) throws IOException {
+        return sendJson("/api/time", "{\"clock\":" + (System.currentTimeMillis() / 1000) + "}", secret);
+    }
+
+    public static String motion() throws IOException {
+        HttpURLConnection connection = request("/api/motion", "GET", null);
+        try { return readResponse(connection); }
+        finally { connection.disconnect(); }
+    }
+
+    public static String setShakeEvents(boolean enabled, String secret) throws IOException {
+        return sendJson("/api/motion/settings", "{\"shake_enabled\":" + (enabled ? "true" : "false") + "}", secret);
     }
 
     public static String upload(String filename, byte[] data, String secret, Progress progress) throws IOException {

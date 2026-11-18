@@ -33,9 +33,10 @@ async function runPreview(world, area, liveState = false) {
   waterTabs.querySelectorAll = () => areaButtons;
   nodes.set('water-tabs', waterTabs);
   let drawn = 0;
+  let translated = 0;
   const context = {
     clearRect() {}, save() {}, restore() {}, beginPath() {}, arc() {}, clip() {},
-    translate() {}, scale() {}, moveTo() {}, lineTo() {}, stroke() {},
+    translate() { translated += 1; }, scale() {}, moveTo() {}, lineTo() {}, stroke() {},
     fillRect() { drawn += 1; },
   };
   const canvas = fakeNode();
@@ -66,7 +67,8 @@ async function runPreview(world, area, liveState = false) {
             ocean: {unlocked: false, plants: 2, fish: 2},
             deepsea: {unlocked: false, fish: 1, glow: 2},
           } : undefined}));
-      return Promise.resolve({ok: true, json: async () => ({worlds})});
+      return Promise.resolve({ok: true, json: async () => ({worlds,
+        motion: {connected: true, tilt_x: 0.6, tilt_y: -0.3, shake_id: 0}})});
     },
   };
   vm.runInNewContext(script, sandbox);
@@ -75,6 +77,10 @@ async function runPreview(world, area, liveState = false) {
   frame(1200);
   assert.ok(drawn > 50, 'canvas draws substantial scene');
   assert.ok(nodes.get('world-title').textContent.length > 0);
+  if (liveState) {
+    assert.ok(translated > 0, 'onboard tilt moves the scene');
+    assert.equal(nodes.get('motion-status').textContent, '傾きに反応中');
+  }
   if (world === 'aquarium') {
     assert.equal(waterTabs.hidden, false);
     if (liveState) {

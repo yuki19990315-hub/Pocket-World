@@ -18,6 +18,10 @@ public class SannyApiSelfTest {
             SannyApi.readLimited(new ByteArrayInputStream(new byte[SannyApi.MAX_FILE + 1]));
             throw new AssertionError("Oversized file accepted");
         } catch (IOException expected) { /* correct */ }
-        System.out.println("SannyApiSelfTest: 8 checks passed");
+        String schedule = SannyApi.scheduleJson(true, "08:30", "18:45", 1790000000L);
+        check(schedule.contains("\"clock\":1790000000"));
+        check(schedule.contains("\"exclude_jp_holidays\":true"));
+        check(schedule.contains("\"wake\":\"08:30\""));
+        System.out.println("SannyApiSelfTest: 11 checks passed");
     }
 }

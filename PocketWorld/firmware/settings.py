@@ -14,3 +14,11 @@ STA_SSID = ""
 STA_PASSWORD = ""
 
 PORT = 80
+
+# Hardware sleep requires USB access for recovery and real-world RTC testing.
+# Keep disabled until the round-LCD/backlight driver and physical reset access
+# have been checked. Time settings can be saved from the app in either case.
+ENABLE_DEEP_SLEEP = False
+
+# Read the on-board QMI8658 on GPIO6 SDA / GPIO7 SCL where available.
+ENABLE_MOTION_SENSOR = True
