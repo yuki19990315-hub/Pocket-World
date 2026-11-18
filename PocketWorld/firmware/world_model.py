@@ -1,17 +1,23 @@
 """Pocket World simulation core. Compatible with CPython and MicroPython.
 
-All four worlds advance independently, even when a different world is viewed.
+All six worlds advance independently, even when a different world is viewed.
 No network, display, or filesystem dependency is required by this module.
 """
 
 WORLD_DEFS = (
-    ("nature", "自然の世界", "Forest", 13579),
+    ("nature", "自然の世界", "Island", 13579),
     ("city", "街の世界", "Town", 24681),
     ("hybrid", "自然＋文明", "Harmony", 35791),
     ("fantasy", "ファンタジー", "Arcana", 46801),
+    ("forest", "森のテラリウム", "Woodland", 57913),
+    ("aquarium", "水の世界", "Aquarium", 68021),
 )
 
 WEATHERS = ("sunny", "sunny", "cloudy", "rain", "windy")
+# The two marine areas remain distinct from freshwater; creatures never mix.
+WATER_AREAS = ("river", "ocean", "deepsea")
+WATER_UNLOCK_MINUTES = {"ocean": 1440, "deepsea": 4320}
+FOREST_SEASONS = ("spring", "summer", "autumn", "winter")
 MAX_OFFLINE_SECONDS = 48 * 3600
 TICK_SECONDS = 60
 # Sound levels are normalized values from 0 to 100, not raw microphone samples.
@@ -24,8 +30,19 @@ def _clamp(value, bottom=0, top=100):
     return max(bottom, min(top, value))
 
 
+def _starting_water_area(ident):
+    if ident == "river":
+        return {"unlocked": True, "plants": 6, "fish": 2, "shrimp": 1,
+                "coral": 0, "glow": 0, "visitors": 0}
+    if ident == "ocean":
+        return {"unlocked": False, "plants": 2, "fish": 2, "shrimp": 0,
+                "coral": 1, "glow": 0, "visitors": 0}
+    return {"unlocked": False, "plants": 0, "fish": 1, "shrimp": 0,
+            "coral": 0, "glow": 2, "visitors": 0}
+
+
 class PocketWorld:
-    VERSION = 1
+    VERSION = 2
 
     def __init__(self, restored=None):
         restored = restored if isinstance(restored, dict) else {}
@@ -49,9 +66,31 @@ class PocketWorld:
                 "sound_activity": _clamp(self._int(old, "sound_activity", 0), 0, 19),
                 "sound_projects": _clamp(self._int(old, "sound_projects", 0), 0, 2),
                 "sound_sparks": _clamp(self._int(old, "sound_sparks", 0), 0, 7),
+                "mushrooms": self._int(old, "mushrooms", 1 if ident == "forest" else 0),
+                "fireflies": self._int(old, "fireflies", 1 if ident == "forest" else 0),
+                "tree_age": self._int(old, "tree_age", 0),
+                "season": old.get("season", "spring"),
                 "weather": old.get("weather", "sunny"),
                 "events": list(old.get("events", []))[-5:],
             }
+            if ident == "aquarium":
+                saved_areas = old.get("water_areas", {})
+                if not isinstance(saved_areas, dict):
+                    saved_areas = {}
+                areas = {}
+                for area_id in WATER_AREAS:
+                    area_old = saved_areas.get(area_id, {})
+                    if not isinstance(area_old, dict):
+                        area_old = {}
+                    start = _starting_water_area(area_id)
+                    area = {field: self._int(area_old, field, start[field])
+                            for field in ("plants", "fish", "shrimp", "coral", "glow", "visitors")}
+                    area["unlocked"] = (area_id == "river" or
+                        bool(area_old.get("unlocked", False)) or
+                        self.worlds[ident]["minutes"] >= WATER_UNLOCK_MINUTES[area_id])
+                    areas[area_id] = area
+                self.worlds[ident]["water_areas"] = areas
+                self._sync_aquarium(self.worlds[ident])
         self.last_wall_epoch = self._int(restored, "last_wall_epoch", 0)
         self.runtime_since_boot = 0
         self.clock_reconciled = False
@@ -112,11 +151,77 @@ class PocketWorld:
         world["events"].append(message)
         world["events"] = world["events"][-5:]
 
+    @staticmethod
+    def _sync_aquarium(world):
+        active = [area for area in world["water_areas"].values() if area["unlocked"]]
+        world["plants"] = sum(area["plants"] + area["coral"] for area in active)
+        world["wildlife"] = sum(area["fish"] + area["shrimp"] for area in active)
+
+    def _step_forest(self, world, n):
+        if n % 24 == 0:
+            world["plants"] = min(85, world["plants"] + 1)
+        if n % 97 == 0:
+            world["wildlife"] = min(25, world["wildlife"] + 1)
+        if n % 180 == 0:
+            world["tree_age"] = min(1000, world["tree_age"] + 1)
+        if world["weather"] == "rain" and n % 45 == 0:
+            world["mushrooms"] = min(25, world["mushrooms"] + 1)
+        if n % 360 == 0:
+            world["fireflies"] = min(18, world["fireflies"] + 1)
+            self._event(world, "日が暮れて、ホタルが光り始めました")
+        season = FOREST_SEASONS[(n // (3 * 1440)) % len(FOREST_SEASONS)]
+        if season != world["season"]:
+            world["season"] = season
+            self._event(world, "森の季節が移り変わりました")
+
+    def _step_aquarium(self, world, n):
+        areas = world["water_areas"]
+        for area_id in ("ocean", "deepsea"):
+            if not areas[area_id]["unlocked"] and n >= WATER_UNLOCK_MINUTES[area_id]:
+                areas[area_id]["unlocked"] = True
+                self._event(world, "新しい水域「%s」が解放されました" %
+                            ("海" if area_id == "ocean" else "深海"))
+        river = areas["river"]
+        if n % 45 == 0:
+            river["plants"] = min(35, river["plants"] + 1)
+        if n % 190 == 0:
+            river["fish"] = min(18, river["fish"] + 1)
+        if n % 245 == 0:
+            river["shrimp"] = min(12, river["shrimp"] + 1)
+        ocean = areas["ocean"]
+        if ocean["unlocked"]:
+            if n % 100 == 0:
+                ocean["coral"] = min(24, ocean["coral"] + 1)
+            if n % 220 == 0:
+                ocean["fish"] = min(20, ocean["fish"] + 1)
+            if n % 1080 == 0:
+                ocean["visitors"] = min(5, ocean["visitors"] + 1)
+                self._event(world, "海にウミガメが遊びに来ました")
+        deep = areas["deepsea"]
+        if deep["unlocked"]:
+            if n % 170 == 0:
+                deep["glow"] = min(22, deep["glow"] + 1)
+            if n % 310 == 0:
+                deep["fish"] = min(16, deep["fish"] + 1)
+            if n % 1500 == 0:
+                deep["visitors"] = min(4, deep["visitors"] + 1)
+                self._event(world, "深海に見たことのない生き物が現れました")
+        self._sync_aquarium(world)
+
     def _step(self, world):
         world["minutes"] += 1
         n = world["minutes"]
         ident = world["id"]
         roll = self._rand(world, 100)
+
+        if ident == "aquarium":
+            self._step_aquarium(world, n)
+            return
+        if ident == "forest":
+            if n % 90 == 0:
+                world["weather"] = WEATHERS[roll % len(WEATHERS)]
+            self._step_forest(world, n)
+            return
 
         if ident in ("nature", "hybrid", "fantasy") and n % 9 == 0:
             world["plants"] = _clamp(world["plants"] + 1, 0, 85)
@@ -155,9 +260,13 @@ class PocketWorld:
             self._event(world, "住民があなたに手を振りました")
         elif ident == "hybrid":
             self._event(world, "小鳥が村の広場に飛んできました")
-        else:
+        elif ident == "fantasy":
             world["magic"] = min(80, world["magic"] + 1)
             self._event(world, "魔力の粒子が集まりました")
+        elif ident == "forest":
+            self._event(world, "落ち葉の下で小さな虫を見つけました")
+        elif ident == "aquarium":
+            self._event(world, "水面に波紋が広がり、魚が近寄ってきました")
         return True
 
     def observe_sound(self, level):
@@ -182,9 +291,9 @@ class PocketWorld:
         changed = band != self.audio["band"]
         self.audio = {"connected": True, "level": level, "band": band}
 
-        # Nature and harmony respond through the weather.
+        # Nature, woodland and harmony respond through the weather.
         weather = {"quiet": "sunny", "active": "windy", "loud": "rain"}[band]
-        for ident in ("nature", "hybrid"):
+        for ident in ("nature", "hybrid", "forest"):
             world = self.worlds[ident]
             world["weather"] = weather
             if changed:
@@ -194,6 +303,12 @@ class PocketWorld:
                     "loud": "にぎやかな音に誘われて雨が降り始めました",
                 }
                 self._event(world, messages[band])
+
+        if changed:
+            self._event(self.worlds["aquarium"],
+                        "水が静かに揺れています" if band == "quiet" else
+                        "水面に大きな波紋が広がりました" if band == "loud" else
+                        "周囲の音で水面に小さな泡が生まれました")
 
         # Town and harmony use sustained activity to grow; a single loud sound
         # cannot instantly spawn many houses or residents.
@@ -232,8 +347,12 @@ class PocketWorld:
         for ident, _, _, _ in WORLD_DEFS:
             world = self.worlds[ident]
             # Copy each world; API users must not mutate internal state.
-            worlds.append({key: (value[:] if isinstance(value, list) else value)
-                           for key, value in world.items()})
+            data = {key: (value[:] if isinstance(value, list) else value)
+                    for key, value in world.items() if key != "water_areas"}
+            if "water_areas" in world:
+                data["water_areas"] = {key: dict(value)
+                                       for key, value in world["water_areas"].items()}
+            worlds.append(data)
         return {"version": self.VERSION, "worlds": worlds,
                 "linked": True, "audio": dict(self.audio),
                 "time_source": "phone" if self.clock_reconciled else "uptime"}

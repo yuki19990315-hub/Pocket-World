@@ -3,13 +3,15 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
-from world_model import MAX_OFFLINE_SECONDS, PocketWorld
+from world_model import (MAX_OFFLINE_SECONDS, PocketWorld,
+                         WATER_UNLOCK_MINUTES)
 
 
 class TestPocketWorld(unittest.TestCase):
-    def test_four_worlds_exist(self):
+    def test_six_worlds_exist(self):
         engine = PocketWorld()
-        self.assertEqual(set(engine.worlds), {"nature", "city", "hybrid", "fantasy"})
+        self.assertEqual(set(engine.worlds), {"nature", "city", "hybrid", "fantasy",
+                                             "forest", "aquarium"})
 
     def test_hidden_worlds_advance(self):
         engine = PocketWorld()
@@ -57,6 +59,66 @@ class TestPocketWorld(unittest.TestCase):
         engine = PocketWorld()
         self.assertEqual(engine.reconcile_clock("oops"), 0)
         self.assertFalse(engine.clock_reconciled)
+
+    def test_water_starts_with_river_only(self):
+        areas = PocketWorld().worlds["aquarium"]["water_areas"]
+        self.assertTrue(areas["river"]["unlocked"])
+        self.assertFalse(areas["ocean"]["unlocked"])
+        self.assertFalse(areas["deepsea"]["unlocked"])
+        self.assertEqual(areas["river"]["fish"], 2)
+
+    def test_sea_and_deep_sea_unlock_with_time(self):
+        engine = PocketWorld()
+        engine.advance((WATER_UNLOCK_MINUTES["ocean"] - 1) * 60)
+        self.assertFalse(engine.worlds["aquarium"]["water_areas"]["ocean"]["unlocked"])
+        engine.advance(60)
+        self.assertTrue(engine.worlds["aquarium"]["water_areas"]["ocean"]["unlocked"])
+        self.assertFalse(engine.worlds["aquarium"]["water_areas"]["deepsea"]["unlocked"])
+        engine.advance((WATER_UNLOCK_MINUTES["deepsea"] - WATER_UNLOCK_MINUTES["ocean"]) * 60)
+        self.assertTrue(engine.worlds["aquarium"]["water_areas"]["deepsea"]["unlocked"])
+        events = engine.worlds["aquarium"]["events"]
+        self.assertTrue(any("深海" in entry for entry in events))
+
+    def test_water_areas_progress_without_mixing(self):
+        engine = PocketWorld()
+        engine.advance(WATER_UNLOCK_MINUTES["ocean"] * 60)
+        areas = engine.worlds["aquarium"]["water_areas"]
+        river_fish = areas["river"]["fish"]
+        ocean_fish = areas["ocean"]["fish"]
+        self.assertGreater(river_fish, 2)
+        self.assertEqual(ocean_fish, 2)
+        engine.advance(220 * 60)
+        self.assertGreater(areas["ocean"]["fish"], ocean_fish)
+        self.assertGreaterEqual(areas["river"]["fish"], river_fish)
+
+    def test_saving_preserves_new_worlds_and_old_save_migrates(self):
+        old = PocketWorld()
+        old.advance(3600)
+        data = old.persistable()
+        data["worlds"].pop("forest")
+        data["worlds"].pop("aquarium")
+        migrated = PocketWorld(data)
+        self.assertEqual(migrated.worlds["nature"], old.worlds["nature"])
+        self.assertEqual(migrated.worlds["forest"]["minutes"], 0)
+        self.assertTrue(migrated.worlds["aquarium"]["water_areas"]["river"]["unlocked"])
+        migrated.advance(240 * 60)
+        restored = PocketWorld(migrated.persistable())
+        self.assertEqual(restored.worlds, migrated.worlds)
+
+    def test_snapshot_cannot_mutate_water_habitat(self):
+        engine = PocketWorld()
+        state = engine.snapshot()
+        aquarium = next(world for world in state["worlds"] if world["id"] == "aquarium")
+        aquarium["water_areas"]["river"]["fish"] = 999
+        self.assertEqual(engine.worlds["aquarium"]["water_areas"]["river"]["fish"], 2)
+
+    def test_forest_grows_independently(self):
+        engine = PocketWorld()
+        before_city = dict(engine.worlds["city"])
+        before_plants = engine.worlds["forest"]["plants"]
+        engine._step_forest(engine.worlds["forest"], 360)
+        self.assertGreater(engine.worlds["forest"]["plants"], before_plants)
+        self.assertEqual(engine.worlds["city"], before_city)
 
 
 if __name__ == "__main__":

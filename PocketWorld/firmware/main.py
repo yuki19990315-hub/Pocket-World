@@ -1,4 +1,4 @@
-"""MicroPython HTTP endpoint for Pocket World + Sanny Companion v0.2.
+"""MicroPython HTTP endpoint for Pocket World + Sanny Companion v0.3.
 
 Upload main.py, safe_update.py, world_model.py, settings.py and /index.html
 to the board's root filesystem. This first prototype provides the shared world
@@ -141,7 +141,7 @@ def service(client, engine):
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.2", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.3", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):

@@ -36,7 +36,7 @@ import org.json.JSONObject;
 
 import java.io.InputStream;
 
-/** Native companion: observe 4 worlds and update Sanny safely over local Wi-Fi. */
+/** Native companion: observe 6 worlds and update Sanny safely over local Wi-Fi. */
 public class MainActivity extends Activity {
     private static final int PICK_FILE = 701;
     private static final int BG = Color.rgb(14, 29, 32);
@@ -188,7 +188,7 @@ public class MainActivity extends Activity {
     private void showViewer() {
         LinearLayout col = vertical(0);
         pageHost.addView(col, new FrameLayout.LayoutParams(-1, -1));
-        TextView description = label("4つの世界を大きな画面で観察。サンニーと同じデータを表示します。", 12, MUTED, false);
+        TextView description = label("6つの世界を大きな画面で観察。森や川・海・深海も育っていきます。", 12, MUTED, false);
         description.setPadding(dp(4), 0, dp(4), dp(10)); add(col, description, -2, 5);
 
         LinearLayout actions = new LinearLayout(this);

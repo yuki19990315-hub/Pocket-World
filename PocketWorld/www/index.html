@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#101f22">
-  <title>Pocket World — 4つの小さな世界</title>
+  <title>Pocket World — 6つの小さな世界</title>
   <style>
     :root{color-scheme:dark;--bg:#101d21;--card:#17272b;--stroke:#2d4144;--text:#f1f5ed;--muted:#9bafab;--accent:#bff3bc}
     *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% -10%,#29453f 0,transparent 48%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
@@ -18,7 +18,7 @@
     .eyebrow{color:#bedac4;text-transform:uppercase;font-weight:700;font-size:11px;letter-spacing:.18em;margin:0 0 7px}
     h1{margin:0;font-size:clamp(28px,5vw,40px);letter-spacing:-.04em;line-height:1.22}
     .intro{color:var(--muted);margin:10px 0 25px;font-size:13px;line-height:1.7}
-    .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:17px}
+    .tabs{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:17px}
     .tab{background:#18292b;border:1px solid #344a45;border-radius:13px;padding:11px 4px 10px;color:#a9beb5;min-width:0;transition:background .2s,transform .2s}
     .tab.active{background:#29473b;border-color:#9ac89c;color:#f5fff1;box-shadow:inset 0 0 0 1px #6e9976}
     .tab .sym{display:block;font-size:22px;margin-bottom:4px;line-height:1.3}
@@ -34,6 +34,11 @@
     .screen-label{position:absolute;left:50%;bottom:10%;transform:translateX(-50%);white-space:nowrap;background:#0b2121c9;border:1px solid #8fbcab44;color:#f6faee;font-size:11px;padding:5px 10px;border-radius:20px;pointer-events:none}
     .controls{display:flex;justify-content:space-between;align-items:center;margin-top:17px;gap:10px}
     .hint{color:#9cb1aa;font-size:11px}.small-btn{color:#e9fbdf;background:#365248;border:1px solid #557b61;padding:9px 13px;border-radius:11px;font-weight:650;font-size:12px}
+    .water-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:15px}
+    .water-tab{font-size:12px;padding:11px 5px;border:1px solid #4e797a;background:#203d47;color:#d6efec;border-radius:12px}
+    .water-tab.active{background:#366c7b;border-color:#9ed8df;color:#fff}
+    .water-tab:disabled{opacity:.45;cursor:not-allowed}
+    [hidden]{display:none!important}
     .side{display:grid;gap:13px}.panel{background:#182a2d;border:1px solid var(--stroke);border-radius:19px;padding:18px}
     .panel h3{display:flex;justify-content:space-between;margin:0 0 15px;font-size:15px}.panel h3 span{font-weight:400;color:#9db2a8;font-size:11px}
     .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.stat{padding:14px 11px;border:1px solid #35504b;background:#213a39;border-radius:13px}
@@ -45,7 +50,7 @@
     .footer{margin-top:20px;font-size:11px;color:#839d93;line-height:1.7}
     #toast{position:fixed;bottom:30px;left:50%;transform:translate(-50%,10px);opacity:0;transition:.2s;background:#efffe9;color:#213c31;border-radius:14px;padding:11px 17px;max-width:min(350px,90vw);text-align:center;font-size:13px;box-shadow:0 8px 30px #0006;z-index:10;pointer-events:none}
     #toast.show{transform:translate(-50%,0);opacity:1}
-    @media(max-width:690px){.layout{grid-template-columns:1fr}.panel{padding:16px}.display{padding:13px}.screen{max-width:400px}.shell{padding-top:15px}.world-head h2{font-size:20px}}
+    @media(max-width:690px){.layout{grid-template-columns:1fr}.tabs{grid-template-columns:repeat(3,1fr)}.panel{padding:16px}.display{padding:13px}.screen{max-width:400px}.shell{padding-top:15px}.world-head h2{font-size:20px}}
   </style>
 </head>
 <body>
@@ -53,18 +58,25 @@
   <header><div class="brand"><span class="planet">🌍</span>POCKET WORLD</div><div id="connection" class="connection demo">● デモ表示</div></header>
   <p class="eyebrow">Tiny worlds, quietly growing</p>
   <h1>デスクの、小さな世界。</h1>
-  <p class="intro">あなたが仕事をしている間も、4つの世界はそれぞれ少しずつ変わっていく。</p>
+  <p class="intro">あなたが仕事をしている間も、6つの世界はそれぞれ少しずつ変わっていく。</p>
   <nav class="tabs" id="tabs" aria-label="世界の切り替え">
     <button class="tab active" data-world="nature"><span class="sym">🌿</span><span class="text">自然</span></button>
     <button class="tab" data-world="city"><span class="sym">🏘️</span><span class="text">街</span></button>
     <button class="tab" data-world="hybrid"><span class="sym">🌾</span><span class="text">共生</span></button>
     <button class="tab" data-world="fantasy"><span class="sym">✨</span><span class="text">魔法</span></button>
+    <button class="tab" data-world="forest"><span class="sym">🌲</span><span class="text">森</span></button>
+    <button class="tab" data-world="aquarium"><span class="sym">🐠</span><span class="text">水槽</span></button>
   </nav>
   <div class="layout">
     <section class="display" aria-label="世界の観察">
       <div class="world-head"><div><p id="subtitle">Forest / Terrarium</p><h2 id="world-title">自然の世界</h2></div><div id="weather" class="pill">☀ 晴れ</div></div>
       <div class="screen"><canvas id="world-canvas" width="360" height="360" aria-label="世界のドット絵"></canvas><div class="screen-label" id="screen-label">DAY 1 ・ 小さなはじまり</div></div>
-      <div class="controls"><span class="hint">世界をタップして、小さな変化を起こそう</span><button class="small-btn" id="zoom-btn">拡大する ＋</button></div>
+      <div class="water-tabs" id="water-tabs" hidden aria-label="水槽のエリア選択">
+        <button class="water-tab active" data-area="river">🏞️ 川</button>
+        <button class="water-tab" data-area="ocean">🪸 海</button>
+        <button class="water-tab" data-area="deepsea">🌌 深海</button>
+      </div>
+      <div class="controls"><span class="hint" id="world-hint">世界をタップして、小さな変化を起こそう</span><button class="small-btn" id="zoom-btn">拡大する ＋</button></div>
     </section>
     <div class="side">
       <section class="panel"><h3>世界のようす <span>LIVE STATUS</span></h3><div class="stats" id="stats"></div></section>
@@ -73,32 +85,40 @@
       <section class="panel"><h3>最近のできごと <span>EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
     </div>
   </div>
-  <p class="footer">ESP32に接続中は実際の保存データを表示します。デモ表示の場合はブラウザ内で動く仮の世界です。初期版では60秒ごとに自動成長します。</p>
+  <p class="footer">ESP32に接続中は実際の保存データを表示します。デモ表示では水槽3エリアを自由にプレビューできます。実機の水槽は川から始まり、海は1日後、深海は3日後に自動解放されます。各世界は60秒ごとに自動成長します。</p>
 </main>
 <div id="toast" role="status"></div>
 <script>
 (() => {
   "use strict";
-  const worlds = ["nature", "city", "hybrid", "fantasy"];
+  const worlds = ["nature", "city", "hybrid", "fantasy", "forest", "aquarium"];
+  const waterAreas = ["river", "ocean", "deepsea"];
+  const waterNames = {river:"川の水槽",ocean:"海の水槽",deepsea:"深海の水槽"};
   const defaults = {
-    nature: {name:"自然の世界",label:"Forest / Terrarium",seed:13579,plants:10,wildlife:2,residents:0,houses:0,magic:0},
+    nature: {name:"自然の世界",label:"Island / Terrarium",seed:13579,plants:10,wildlife:2,residents:0,houses:0,magic:0},
     city: {name:"街の世界",label:"Town / Civilization",seed:24681,plants:4,wildlife:0,residents:1,houses:1,magic:0},
     hybrid: {name:"自然＋文明",label:"Harmony / Coexistence",seed:35791,plants:10,wildlife:2,residents:0,houses:0,magic:0},
-    fantasy: {name:"ファンタジー",label:"Arcana / Fantasy",seed:46801,plants:10,wildlife:2,residents:0,houses:0,magic:1}
+    fantasy: {name:"ファンタジー",label:"Arcana / Fantasy",seed:46801,plants:10,wildlife:2,residents:0,houses:0,magic:1},
+    forest: {name:"森のテラリウム",label:"Woodland / Living Forest",seed:57913,plants:10,wildlife:2,residents:0,houses:0,magic:0},
+    aquarium: {name:"水の世界",label:"Aquarium / Three Waters",seed:68021,plants:6,wildlife:3,residents:0,houses:0,magic:0}
   };
   const palette = {
     nature:{water:"#65a7a3",deep:"#3c8b91",soil:"#b8b476",ground:"#80ba77",light:"#9bd483",shadow:"#4a7d59",trees:"#285d4f",trunk:"#73563f",roof:"#b77d52"},
     city:{water:"#719cba",deep:"#4e83a5",soil:"#c9b27c",ground:"#b7b889",light:"#d0c99a",shadow:"#7e966b",trees:"#52745e",trunk:"#755c46",roof:"#a45f59"},
     hybrid:{water:"#6ab6b5",deep:"#3e969b",soil:"#c1b07b",ground:"#8abc79",light:"#a8d08c",shadow:"#5f9165",trees:"#376d50",trunk:"#695541",roof:"#bf775b"},
-    fantasy:{water:"#675a96",deep:"#453a77",soil:"#9685a1",ground:"#7d85a0",light:"#9da1bb",shadow:"#5b6684",trees:"#4b517f",trunk:"#6c587a",roof:"#bf8ad7"}
+    fantasy:{water:"#675a96",deep:"#453a77",soil:"#9685a1",ground:"#7d85a0",light:"#9da1bb",shadow:"#5b6684",trees:"#4b517f",trunk:"#6c587a",roof:"#bf8ad7"},
+    forest:{water:"#a6c9b3",deep:"#4f8c76",soil:"#665642",ground:"#588755",light:"#a2c47b",shadow:"#355f47",trees:"#294e3f",trunk:"#745840",roof:"#8e6d4e"},
+    aquarium:{water:"#5ba4bb",deep:"#245b77",soil:"#d2bd98",ground:"#65b1ac",light:"#a0d5cb",shadow:"#427e85",trees:"#308f82",trunk:"#846c58",roof:"#d59c87"}
   };
-  let selected = "nature", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
+  let selected = "nature", waterArea = "river", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
   let audioState = {connected:false,level:null,band:null};
   const soundDescriptions = {
     nature:"静かなら晴れ、音が増えると風、にぎやかになると雨。自然が音に反応します。",
     city:"作業音や話し声などの活気が続くと、住民が増えて建物が育ちます。",
     hybrid:"自然の天候と街の発展が、周囲の音にそれぞれ反応します。",
-    fantasy:"強い音から魔力がたまり、ときどき珍しい流れ星が降ります。"
+    fantasy:"強い音から魔力がたまり、ときどき珍しい流れ星が降ります。",
+    forest:"森の天気や木々の様子が、周囲の音に合わせて変わります。",
+    aquarium:"音が静かなときは穏やかに、にぎやかになると水面に波紋が広がります。"
   };
   const $ = id => document.getElementById(id);
   const canvas = $("world-canvas"), ctx = canvas.getContext("2d");
@@ -108,13 +128,22 @@
 
   function makeDemo(){
     demoMinutes = Math.floor((Date.now()-startTime)/1200);
-    return worlds.map((key,i) => {
+    return worlds.map(key => {
       const base = defaults[key], m = demoMinutes;
+      if(key==="aquarium")return {...base,id:key,minutes:m,weather:"sunny",events:["デモでは3つの水槽を自由に見られます"],
+        water_areas:{
+          river:{unlocked:true,plants:6+Math.floor(m/45),fish:2+Math.floor(m/190),shrimp:1+Math.floor(m/245),coral:0,glow:0,visitors:0},
+          ocean:{unlocked:true,plants:2,fish:2+Math.floor(m/220),shrimp:0,coral:3+Math.floor(m/100),glow:0,visitors:1},
+          deepsea:{unlocked:true,plants:0,fish:2+Math.floor(m/310),shrimp:0,coral:0,glow:4+Math.floor(m/170),visitors:1}
+        }};
       return {...base, id:key, minutes:m, weather:m%36>29?"rain":"sunny", events:["この世界が誕生しました"],
-        plants:base.plants+Math.floor(m/9),wildlife:base.wildlife+Math.floor(m/47),
-        residents:base.residents+((i===1||i>=2)?Math.floor(m/70):0),
-        houses:base.houses+((i===1||i>=2)?Math.floor(m/140):0),
-        magic:base.magic+(i===3?Math.floor(m/55):0)};
+        plants:base.plants+Math.floor(m/(key==="forest"?24:9)),wildlife:base.wildlife+Math.floor(m/97),
+        residents:base.residents+(["city","hybrid","fantasy"].includes(key)?Math.floor(m/70):0),
+        houses:base.houses+(["city","hybrid","fantasy"].includes(key)?Math.floor(m/140):0),
+        magic:base.magic+(key==="fantasy"?Math.floor(m/55):0),
+        mushrooms:key==="forest"?1+Math.floor(m/110):0,fireflies:key==="forest"?1+Math.floor(m/360):0,
+        tree_age:key==="forest"?Math.floor(m/180):0,
+        season:key==="forest"?["spring","summer","autumn","winter"][Math.floor(m/4320)%4]:"spring"};
     });
   }
   function getWorld(){return current[selected] || {...defaults[selected],minutes:0,weather:"sunny",events:[]};}
@@ -125,11 +154,109 @@
   function villager(x,y,seed){rect(x-2,y-4,4,4,seed%2?"#f4d0ac":"#dfac8f");rect(x-3,y,6,6,seed%2?"#e7a768":"#6e9ab0");rect(x-2,y+6,2,3,"#4b4c56");rect(x+1,y+6,2,3,"#4b4c56");}
   function crystal(x,y){rect(x-3,y-8,6,14,"#bc9ee9");rect(x,y-11,3,14,"#e6cbfa");rect(x-6,y-3,5,8,"#7b80c6");rect(x+3,y-2,4,7,"#6ea5d5");}
   function stage(world){const m=world.minutes;return m<35?"小さなはじまり":m<140?"新しい命":m<350?"育ちはじめた世界":m<900?"にぎやかな世界":"進化しつづける世界";}
+
+  function drawForest(world,t){
+    const seed=world.seed, season=world.season||"spring", night=((world.minutes||0)/15)%24>18;
+    const leaves={spring:["#4f9655","#79b96b"],summer:["#276c4a","#4a9560"],autumn:["#a66b3b","#c99b50"],winter:["#668f86","#a4c0af"]}[season]||["#4f9655","#79b96b"];
+    rect(0,0,360,360,night?"#253c52":"#a7d7c1");
+    rect(0,160,360,96,night?"#3d695b":"#6e9e6b");
+    for(let i=0;i<8;i++){const x=i*55-20,y=165+hash(i,17,seed)*35;rect(x,y,50,87,"#6d965b");}
+    rect(0,241,360,32,"#53864e");rect(0,273,360,87,"#544638");
+    for(let i=0;i<55;i++){const x=hash(i,6,seed)*360,y=277+hash(i,7,seed)*82;rect(x,y,3,3,i%3?"#71604a":"#8d7556");}
+    // Exposed underground roots make the terrarium feel like a cutaway.
+    ctx.strokeStyle="#a68d67";ctx.lineWidth=4;ctx.beginPath();
+    for(const x of [77,178,280]){ctx.moveTo(x,263);ctx.lineTo(x-9,297);ctx.lineTo(x-36,322);ctx.moveTo(x,273);ctx.lineTo(x+22,307);ctx.lineTo(x+34,334);}ctx.stroke();
+    const growth=Math.min(30,(world.tree_age||0)*3);
+    for(let i=0;i<3;i++){
+      const x=[79,181,282][i],top=104-growth-(i===1?34:0),wide=i===1?57:48;
+      rect(x-9,top+28,18,242-top,"#6a4b35");rect(x-2,top+36,5,226-top,"#987252");
+      rect(x-wide,top+14,wide*2,29,leaves[0]);rect(x-wide+11,top,wide*2-22,35,leaves[1]);
+      rect(x-wide+3,top+34,wide*2-6,15,leaves[0]);
+      rect(x+wide-24,top+6,17,8,"#b6d28b");
+    }
+    for(let i=0;i<Math.min(32,world.plants||0);i++){
+      const x=20+hash(i,70,seed)*320,y=244+hash(i,71,seed)*16;
+      rect(x,y-6,3,7,"#9bc57b");rect(x-4,y-8,4,4,"#649c62");rect(x+3,y-10,4,5,"#649c62");
+    }
+    for(let i=0;i<Math.min(20,world.mushrooms||0);i++){
+      const x=30+hash(i,44,seed)*300,y=255+hash(i,45,seed)*13;
+      rect(x,y-8,4,8,"#edddbf");rect(x-5,y-11,14,5,i%3?"#b9654f":"#d9ac69");rect(x-1,y-11,3,2,"#fff0cd");
+    }
+    for(let i=0;i<Math.min(16,world.wildlife||0);i++){
+      const x=32+hash(i,40,seed)*300,y=230+hash(i,41,seed)*25;
+      rect(x+Math.sin(t/900+i)*4,y,8,5,"#f3d8ad");rect(x+2,y-3,3,3,"#ebc7a0");
+    }
+    if(night){rect(0,0,360,360,"#11183a43");for(let i=0;i<Math.min(18,world.fireflies||0);i++){
+      const x=38+hash(i,91,seed)*280+Math.sin(t/700+i)*6,y=99+hash(i,92,seed)*159+Math.cos(t/800+i)*7;
+      rect(x-2,y-2,6,6,"#a5de8b66");rect(x,y,2,2,"#fff4a4");
+    }}
+    if(world.weather==="rain"){
+      for(let i=0;i<25;i++){const x=hash(i,82,seed)*360,y=(hash(i,83,seed)*360+t/19)%360;rect(x,y,2,10,"#c8e2d0b0");}
+    }
+  }
+
+  function pixelFish(x,y,scale,color,flip=1){
+    ctx.save();ctx.translate(Math.round(x),Math.round(y));ctx.scale(flip,1);
+    rect(-8*scale,-4*scale,16*scale,8*scale,color);rect(8*scale,-2*scale,4*scale,4*scale,color);
+    rect(-13*scale,-6*scale,6*scale,12*scale,color);rect(3*scale,-2*scale,2*scale,2*scale,"#162c3a");
+    rect(-4*scale,-6*scale,5*scale,2*scale,"#e9f5e2a0");ctx.restore();
+  }
+  function drawAquarium(world,t){
+    const area=(world.water_areas||{})[waterArea]||{plants:6,fish:2,shrimp:1,coral:0,glow:0,visitors:0};
+    const seed=world.seed,river=waterArea==="river",deep=waterArea==="deepsea";
+    const base=river?"#4c9daf":deep?"#101d44":"#176889";
+    rect(0,0,360,360,base);
+    for(let y=0;y<300;y+=12){rect(0,y,360,3,river?"#a6d8cc0e":deep?"#8b9dfb0b":"#b6e4ec0c");}
+    const soundWave=audioState.connected?(audioState.band==="loud"?12:audioState.band==="active"?7:2):4;
+    for(let i=0;i<7;i++){
+      const wave=soundWave*Math.sin(t/750+i);
+      rect(i*58-14,wave+28,42,4,deep?"#596aa55e":"#c5f8f14a");
+    }
+    rect(0,274,360,86,deep?"#253152":river?"#a59e79":"#bbac8c");
+    for(let i=0;i<30;i++){
+      const x=hash(i,20,seed)*360,y=278+hash(i,21,seed)*78;
+      rect(x,y,6+hash(i,22,seed)*12,5,deep?"#4f567d":i%3?"#d5c6a0":"#897e6d");
+    }
+    if(river){for(let i=0;i<Math.min(area.plants,30);i++){
+      const x=35+hash(i,42,seed)*290,h=16+hash(i,43,seed)*79;
+      rect(x,278-h,4,h,"#34766b");rect(x-7,278-h+9,11,5,"#6bb79a");rect(x+3,278-h+22,10,5,"#8ccaa3");
+    }}else if(deep){for(let i=0;i<Math.min(area.glow,25);i++){
+      const x=45+hash(i,42,seed)*275,y=73+hash(i,43,seed)*190;
+      rect(x-5,y-5,13,13,"#6a82dc27");rect(x,y,4,4,i%2?"#9ef2df":"#b9abff");
+    }}else{for(let i=0;i<Math.min(area.coral,25);i++){
+      const x=32+hash(i,42,seed)*292,y=282;
+      const color=i%3===0?"#ee9a91":i%3===1?"#f6c16e":"#af9be5";
+      rect(x,y-30,6,32,color);rect(x-13,y-22,16,5,color);rect(x+5,y-16,13,5,color);
+      rect(x-9,y-39,6,21,color);
+    }}
+    for(let i=0;i<Math.min(area.fish||0,25);i++){
+      const x=52+hash(i,64,seed)*255+Math.sin(t/1400+i*2.3)*17;
+      const y=66+hash(i,65,seed)*180+Math.cos(t/1800+i*2.4)*8;
+      const color=deep?(i%2?"#86a4ee":"#96ecd8"):river?(i%2?"#d9d5a7":"#a4e0d4"):(i%3===0?"#f6ac65":i%3===1?"#d7d6a2":"#a6dde3");
+      pixelFish(x,y,0.8+hash(i,66,seed)*.3,color,i%2?-1:1);
+    }
+    if(river)for(let i=0;i<Math.min(area.shrimp||0,11);i++){
+      const x=48+hash(i,75,seed)*260,y=271+hash(i,76,seed)*14;
+      rect(x,y,8,3,"#dfb39d");rect(x-3,y-3,4,3,"#f1d2b4");
+    }
+    const bubbleCount=20+(audioState.connected&&audioState.band==="loud"?12:0);
+    for(let i=0;i<bubbleCount;i++){
+      const x=35+hash(i,90,seed)*295,y=(hash(i,91,seed)*340-t/(30+i%7*12)+3600)%350;
+      rect(x,y,i%3?3:5,i%3?3:5,deep?"#a5d4fa65":"#d9fff197");
+    }
+    if(!river && !deep && area.visitors>0)pixelFish(175+Math.sin(t/5000)*68,96,2.5,"#a3c6b6");
+    if(deep && area.visitors>0){rect(160+Math.sin(t/2500)*28,142,45,17,"#7d91a7");rect(203,136,5,3,"#ffe98b");}
+  }
   function drawScene(world, t){
     const p=palette[selected], minute=world.minutes||0;
     ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
     rect(0,0,360,360,p.water);ctx.save();
     if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
+    if(selected==="forest" || selected==="aquarium"){
+      hitAreas=[];
+      if(selected==="forest")drawForest(world,t);else drawAquarium(world,t);
+      ctx.restore();ctx.restore();return;
+    }
     const size=12, cols=30;hitAreas=[];
     for(let gy=0;gy<cols;gy++)for(let gx=0;gx<cols;gx++){
       const x=gx*size,y=gy*size,cx=x+6-180,cy=y+6-180;
@@ -179,25 +306,52 @@
     }
     ctx.restore();
   }
+  function updateWaterTabs(w){
+    const tabs=$("water-tabs");tabs.hidden=selected!=="aquarium";
+    if(selected!=="aquarium")return;
+    const areas=w.water_areas||{};
+    if(Object.keys(areas).length && (!areas[waterArea] || !areas[waterArea].unlocked))waterArea="river";
+    tabs.querySelectorAll("button").forEach(btn=>{
+      const area=btn.dataset.area,unlocked=Boolean(areas[area]&&areas[area].unlocked);
+      btn.disabled=!unlocked;
+      btn.classList.toggle("active",waterArea===area);
+      btn.setAttribute("aria-pressed",waterArea===area);
+      btn.textContent=(unlocked?"":"🔒 ")+({river:"🏞️ 川",ocean:"🪸 海",deepsea:"🌌 深海"})[area];
+      btn.title=unlocked?waterNames[area]:"時間とともに解放されます";
+    });
+  }
   function render(){
-    const w=getWorld();$("world-title").textContent=w.name;$("subtitle").textContent=defaults[selected].label;
-    $("weather").textContent=({sunny:"☀ 晴れ",cloudy:"☁ くもり",rain:"☂ 雨",windy:"🍃 風"})[w.weather]||"☀ 晴れ";
-    $("screen-label").textContent="DAY "+(Math.floor(w.minutes/1440)+1)+" ・ "+stage(w);
-    const metrics=[["🌿 植物",w.plants,"株"],["🐾 動物",w.wildlife,"匹"],["👤 住民",w.residents,"人"],[selected==="fantasy"?"✨ 魔力":"🏠 建物",selected==="fantasy"?w.magic:w.houses,selected==="fantasy"?"pt":"軒"]];
+    const w=getWorld();updateWaterTabs(w);
+    const isWater=selected==="aquarium";
+    $("world-title").textContent=isWater?waterNames[waterArea]:w.name;
+    $("subtitle").textContent=defaults[selected].label;
+    $("weather").textContent=isWater?({river:"💧 淡水",ocean:"🪸 海水",deepsea:"✨ 深海"})[waterArea]:({sunny:"☀ 晴れ",cloudy:"☁ くもり",rain:"☂ 雨",windy:"🍃 風"})[w.weather]||"☀ 晴れ";
+    $("screen-label").textContent="DAY "+(Math.floor(w.minutes/1440)+1)+" ・ "+(isWater?waterNames[waterArea]:stage(w));
+    $("world-hint").textContent=isWater?"川・海・深海は別々に成長。水面をタップしてみよう":selected==="forest"?"森の地上も土の中も、ゆっくり育っていく":"世界をタップして、小さな変化を起こそう";
+    let metrics=[["🌿 植物",w.plants,"株"],["🐾 動物",w.wildlife,"匹"],["👤 住民",w.residents,"人"],[selected==="fantasy"?"✨ 魔力":"🏠 建物",selected==="fantasy"?w.magic:w.houses,selected==="fantasy"?"pt":"軒"]];
+    if(selected==="forest")metrics=[["🌲 植物",w.plants,"株"],["🐾 生き物",w.wildlife,"匹"],["🍄 キノコ",w.mushrooms||0,"本"],["✨ ホタル",w.fireflies||0,"匹"]];
+    if(isWater){
+      const area=(w.water_areas||{})[waterArea]||{};
+      metrics=[["🐟 魚",area.fish||0,"匹"],["🌱 水草",area.plants||0,"株"],
+        waterArea==="river"?["🦐 エビ",area.shrimp||0,"匹"]:waterArea==="ocean"?["🪸 サンゴ",area.coral||0,"群"]:["✨ 発光生物",area.glow||0,"群"],
+        ["🌊 訪問者",area.visitors||0,"匹"]];
+    }
     $("stats").innerHTML=metrics.map(([label,value,unit])=>'<div class="stat"><small>'+label+'</small><strong>'+value+'</strong><em>'+unit+'</em></div>').join("");
-    $("elapsed").textContent=Math.floor(w.minutes/60)+"時間 "+(w.minutes%60)+"分";$("stage").textContent=stage(w);
+    $("elapsed").textContent=Math.floor(w.minutes/60)+"時間 "+(w.minutes%60)+"分";
+    $("stage").textContent=isWater?({river:"川の暮らしが成長中",ocean:"サンゴ礁が成長中",deepsea:"光る生態系が成長中"})[waterArea]:stage(w);
     $("sound-description").textContent=soundDescriptions[selected];
     $("sound-status").textContent=audioState.connected?"反応中":"外付けマイク待ち";
     $("sound-level").textContent=audioState.connected?({quiet:"静か",active:"活動中",loud:"にぎやか"}[audioState.band]||"計測中")+" ・ "+audioState.level+"/100":"未計測";
     const list=(w.events||[]).slice(-4).reverse();$("events").replaceChildren(...(list.length?list:["この世界が誕生しました"]).map(msg=>{const li=document.createElement("li");li.textContent=msg;return li;}));
   }
   function setWorld(id){if(!worlds.includes(id))return;selected=id;document.querySelectorAll('.tab').forEach(el=>{const active=el.dataset.world===id;el.classList.toggle('active',active);el.setAttribute('aria-pressed',active);});render();}
+  function setWaterArea(area){if(!waterAreas.includes(area))return;const currentArea=(getWorld().water_areas||{})[area];if(!currentArea||!currentArea.unlocked)return;waterArea=area;render();}
   function showToast(msg){const el=$("toast");el.textContent=msg;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2400);}
   async function fetchState(){
     try{
       const response=await fetch("/api/state?clock="+Math.floor(Date.now()/1000),{cache:"no-store",signal:AbortSignal.timeout(2400)});
       if(!response.ok)throw Error("No ESP32 API");const data=await response.json();
-      if(!Array.isArray(data.worlds)||data.worlds.length!==4)throw Error("Bad state");
+      if(!Array.isArray(data.worlds)||data.worlds.length!==6)throw Error("Bad state");
       current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
       audioState=data.audio&&typeof data.audio.connected==="boolean"?data.audio:{connected:false,level:null,band:null};
       live=true;$("connection").textContent="● ESP32に接続中";$("connection").classList.remove("demo");
@@ -209,18 +363,23 @@
     render();
   }
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>setWorld(btn.dataset.world)));
+  document.querySelectorAll('.water-tab').forEach(btn=>btn.addEventListener('click',()=>setWaterArea(btn.dataset.area)));
   $("zoom-btn").addEventListener("click",()=>{enlarged=!enlarged;$("zoom-btn").textContent=enlarged?"元に戻す −":"拡大する ＋";});
   canvas.addEventListener('click',async ev=>{
     const r=canvas.getBoundingClientRect(),x=(ev.clientX-r.left)*360/r.width,y=(ev.clientY-r.top)*360/r.height;
     const px=enlarged?(x-180)/1.32+180:x,py=enlarged?(y-180)/1.32+180:y;
     const hit=hitAreas.find(a=>Math.abs(a.x-px)<18&&Math.abs(a.y-py)<20);
-    showToast(hit?"🏠 "+hit.name+"：小さな住民たちの暮らしの場所です":"🌱 "+getWorld().name+"に触れました");
+    showToast(selected==="aquarium"?"💧 "+waterNames[waterArea]+"に波紋が広がりました":selected==="forest"?"🍄 森の小さな生き物が動きました":hit?"🏠 "+hit.name+"：小さな住民たちの暮らしの場所です":"🌱 "+getWorld().name+"に触れました");
     if(live){try{await fetch('/api/touch?world='+selected,{method:'POST'});await fetchState();}catch(err){/* next poll retries */}}
   });
   let downX=null;
   canvas.addEventListener('touchstart',e=>{downX=e.touches[0].clientX},{passive:true});
-  canvas.addEventListener('touchend',e=>{if(downX===null)return;const dx=e.changedTouches[0].clientX-downX;if(Math.abs(dx)>45)setWorld(worlds[(worlds.indexOf(selected)+(dx<0?1:3))%4]);downX=null},{passive:true});
-  function frame(t){drawScene(getWorld(),t);requestAnimationFrame(frame);}setWorld(selected);fetchState();setInterval(fetchState,5000);requestAnimationFrame(frame);
+  canvas.addEventListener('touchend',e=>{if(downX===null)return;const dx=e.changedTouches[0].clientX-downX;if(Math.abs(dx)>45)setWorld(worlds[(worlds.indexOf(selected)+(dx<0?1:worlds.length-1))%worlds.length]);downX=null},{passive:true});
+  function frame(t){drawScene(getWorld(),t);requestAnimationFrame(frame);}
+  const preview = new URLSearchParams(location.search);
+  if(waterAreas.includes(preview.get("area")))waterArea=preview.get("area");
+  setWorld(worlds.includes(preview.get("world"))?preview.get("world"):selected);
+  fetchState();setInterval(fetchState,5000);requestAnimationFrame(frame);
 })();
 </script>
 </body>
