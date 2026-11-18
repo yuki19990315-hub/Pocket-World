@@ -32,6 +32,8 @@ class WorldDisplay:
         self.world_index = 0
         self.water_index = 0
         self.visible = False
+        self.art_key = None
+        self.art_buffer = None
 
     @property
     def world_id(self):
@@ -57,7 +59,9 @@ class WorldDisplay:
         y = int(motion.tilt_y * 7)
         ident = self.world_id
         detail = ""
-        if ident in ("nature", "city", "hybrid"):
+        if self.draw_illustration(world):
+            detail = self.illustrated_effects(world, tick, x, y)
+        elif ident in ("nature", "city", "hybrid"):
             self.landscape(world, tick, x, y)
         elif ident == "fantasy":
             self.fantasy(world, tick, x, y)
@@ -91,6 +95,62 @@ class WorldDisplay:
         if not self.visible:
             self.lcd.backlight.on()
             self.visible = True
+
+    def draw_illustration(self, world):
+        day = min(2, max(0, world["minutes"]) // (15 * 1440)) * 15
+        key = (world["id"], day)
+        if key != self.art_key:
+            self.art_key = key
+            try:
+                import deflate
+                if self.art_buffer is None:
+                    self.art_buffer = bytearray(len(self.lcd.buffer))
+                view = memoryview(self.art_buffer)
+                with open("assets/lcd-art-%s-%d.dat" % key, "rb") as file:
+                    with deflate.DeflateIO(file, deflate.ZLIB, 15) as stream:
+                        offset = 0
+                        while offset < len(view):
+                            count = stream.readinto(view[offset:])
+                            if not count:
+                                raise ValueError("Short LCD illustration")
+                            offset += count
+                        if stream.read(1):
+                            raise ValueError("Oversized LCD illustration")
+            except (ImportError, OSError, ValueError, MemoryError) as exc:
+                print("LCD illustration unavailable:", key, exc)
+                self.art_buffer = None
+        if self.art_buffer is None:
+            return False
+        self.lcd.buffer[:] = self.art_buffer
+        return True
+
+    def illustrated_effects(self, world, tick, x, y):
+        c = self.canvas
+        ident = world["id"]
+        if ident == "aquarium":
+            area = self.water_area(world)
+            water = world["water_areas"][area]
+            for index in range(min(10, max(3, water["fish"] + 2))):
+                c.ellipse(52 + index * 71 % 137 + x,
+                          64 + (index * 31 - tick * 3) % 100 + y, 2, 2, WHITE)
+            return {"river": "RIVER", "ocean": "OCEAN", "deepsea": "DEEP SEA"}[area]
+        if world["weather"] == "rain":
+            for index in range(12):
+                px = 26 + index * 71 % 188 + x
+                py = 55 + (tick * 8 + index * 17) % 104 + y
+                c.line(px, py, px - 3, py + 6, WHITE)
+        elif ident == "forest":
+            stars(c, min(8, max(0, world["fireflies"])), tick, GOLD)
+        elif ident == "fantasy":
+            stars(c, min(9, max(2, world["magic"])), tick, GOLD)
+        else:
+            count = min(5, max(1, world["wildlife"]))
+            for index in range(count):
+                px = 49 + (index * 53 + tick * 3) % 142 + x
+                py = 56 + index * 13 + y
+                c.line(px - 3, py, px, py + 2, WHITE)
+                c.line(px, py + 2, px + 3, py, WHITE)
+        return world["season"].upper() if ident == "forest" else ""
 
     def landscape(self, world, tick, x, y):
         c = self.canvas
@@ -161,10 +221,13 @@ class WorldDisplay:
         stars(c, min(12, max(0, world["fireflies"])), tick, GOLD)
         return season.upper()
 
+    def water_area(self, world):
+        unlocked = [area for area in WATER_AREAS if world["water_areas"][area]["unlocked"]]
+        return unlocked[self.water_index % len(unlocked)]
+
     def aquarium(self, world, tick, x):
         c = self.canvas
-        unlocked = [area for area in WATER_AREAS if world["water_areas"][area]["unlocked"]]
-        area_id = unlocked[self.water_index % len(unlocked)]
+        area_id = self.water_area(world)
         area = world["water_areas"][area_id]
         colors = {"river": (rgb(38, 128, 139), GREEN),
                   "ocean": (rgb(32, 94, 159), rgb(227, 122, 127)),
