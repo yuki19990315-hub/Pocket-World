@@ -408,12 +408,14 @@
   }
   function render(){
     const w=getWorld();updateWaterTabs(w);
+    const isWater=selected==="aquarium";
     $("device-select").hidden=!live||!displayState.connected;
+    $("device-select").textContent=isWater?"この水槽をサンニーに表示":"この世界をサンニーに表示";
     const battery=displayState.battery;
     $("device-status").textContent=!live?"デモ鑑賞中":!displayState.connected?"丸形画面の接続を確認中":
-      "本体の画面："+(defaults[displayState.selected]?.name||"確認中")+
+      "本体の画面："+(displayState.selected==="aquarium"?
+        (waterNames[displayState.water_area]||"水槽"):(defaults[displayState.selected]?.name||"確認中"))+
       (battery&&typeof battery.voltage==="number"?" ・ 電池 "+battery.voltage.toFixed(2)+"V"+(battery.low?" ⚠ 充電残量に注意":""):"");
-    const isWater=selected==="aquarium";
     $("world-title").textContent=isWater?waterNames[waterArea]:w.name;
     $("subtitle").textContent=defaults[selected].label;
     $("weather").textContent=isWater?({river:"💧 淡水",ocean:"🪸 海水",deepsea:"✨ 深海"})[waterArea]:({sunny:"☀ 晴れ",cloudy:"☁ くもり",rain:"☂ 雨",windy:"🍃 風"})[w.weather]||"☀ 晴れ";
@@ -467,9 +469,11 @@
   $("device-select").addEventListener("click",async()=>{
     if(!live||!displayState.connected)return;
     try{
-      const response=await fetch("/api/display/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({world:selected})});
+      const selection={world:selected};
+      if(selected==="aquarium")selection.area=waterArea;
+      const response=await fetch("/api/display/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(selection)});
       if(!response.ok)throw Error("本体に送れませんでした");
-      showToast("☀ サンニーに"+defaults[selected].name+"を表示しました");
+      showToast("☀ サンニーに"+(selected==="aquarium"?waterNames[waterArea]:defaults[selected].name)+"を表示しました");
       await fetchState();
     }catch(err){showToast("画面切替に失敗しました。通信を確認してね");}
   });

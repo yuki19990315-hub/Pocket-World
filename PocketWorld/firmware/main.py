@@ -114,9 +114,9 @@ def serve_asset(client, path):
     serve_file(client, filename, mime)
 
 
-def save_display_selection(world):
+def save_display_selection(world, water_area="river"):
     with open(DISPLAY_SETTINGS_FILE + ".tmp", "w") as handle:
-        json.dump({"world": world}, handle)
+        json.dump({"world": world, "water_area": water_area}, handle)
     try:
         os.remove(DISPLAY_SETTINGS_FILE + ".bak")
     except OSError:
@@ -132,7 +132,9 @@ def load_display_selection(screen):
     for filename in (DISPLAY_SETTINGS_FILE, DISPLAY_SETTINGS_FILE + ".bak"):
         try:
             with open(filename, "r") as handle:
-                screen.choose(json.load(handle)["world"])
+                saved = json.load(handle)
+            screen.choose(saved["world"])
+            screen.choose_water_area(saved.get("water_area", "river"))
             return
         except (OSError, ValueError, KeyError, TypeError):
             pass
@@ -269,10 +271,19 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
             return False
         try:
             data = json_request(client, headers, body, maximum=160)
-            if len(data) != 1 or not isinstance(data.get("world"), str):
+            if (not isinstance(data.get("world"), str) or
+                set(data) - {"world", "area"} or len(data) not in (1, 2)):
                 raise ValueError("world ID required")
+            area = data.get("area")
+            if area is not None:
+                if data["world"] != "aquarium" or area not in ("river", "ocean", "deepsea"):
+                    raise ValueError("Invalid aquarium area")
+                if not engine.worlds["aquarium"]["water_areas"][area]["unlocked"]:
+                    raise ValueError("Aquarium area is still locked")
             screen.choose(data["world"])
-            save_display_selection(screen.selected)
+            if area is not None:
+                screen.choose_water_area(area)
+            save_display_selection(screen.selected, screen.water_area)
             screen.show(engine.worlds[screen.selected]["minutes"], force=True)
             response(client, "200 OK", "application/json", json.dumps(screen.status()))
         except (ValueError, OSError, TypeError) as exc:
@@ -443,7 +454,7 @@ def main():
             try:
                 ident = screen.poll_touch()
                 if ident is not None:
-                    save_display_selection(ident)
+                    save_display_selection(ident, screen.water_area)
                     screen.show(engine.worlds[ident]["minutes"], force=True)
             except (OSError, ValueError) as exc:
                 print("Touch read failed:", exc)

@@ -78,10 +78,13 @@ class TestProtocol(unittest.TestCase):
     def test_device_mode_changes_persist_without_changing_phone_world(self):
         class Screen:
             selected = "nature"
+            water_area = "river"
             def choose(self, world):
                 if world not in ("nature", "city"):
                     raise ValueError("Unknown world")
                 self.selected = world
+            def choose_water_area(self, area):
+                self.water_area = area
             def show(self, minutes, force=False):
                 return True
             def status(self):
@@ -112,6 +115,40 @@ class TestProtocol(unittest.TestCase):
             {"Content-Length":"17"}, b'{"world":"alien"}'))
         self.assertFalse(main.service(client, self.engine, screen=Screen()))
         self.assertIn(b"400 Bad Request", client.written)
+
+    def test_aquarium_area_requires_unlock(self):
+        class Screen:
+            selected = "nature"
+            water_area = "river"
+            def choose(self, ident):
+                self.selected = ident
+            def choose_water_area(self, area):
+                self.water_area = area
+            def show(self, minutes, force=False):
+                return True
+            def status(self):
+                return {"selected": self.selected, "water_area": self.water_area}
+        with tempfile.TemporaryDirectory() as directory:
+            previous = os.getcwd()
+            os.chdir(directory)
+            try:
+                screen = Screen()
+                body = b'{"world":"aquarium","area":"deepsea"}'
+                client = FakeClient(request("POST", "/api/display/select",
+                    {"Content-Length":str(len(body))}, body))
+                main.service(client, self.engine, screen=screen)
+                self.assertIn(b"400 Bad Request", client.written)
+                self.assertEqual(screen.selected, "nature")
+                self.engine.worlds["aquarium"]["water_areas"]["deepsea"]["unlocked"] = True
+                client = FakeClient(request("POST", "/api/display/select",
+                    {"Content-Length":str(len(body))}, body))
+                main.service(client, self.engine, screen=screen)
+                self.assertIn(b"200 OK", client.written)
+                self.assertEqual(screen.water_area, "deepsea")
+                with open("display.json") as saved:
+                    self.assertEqual(json.load(saved)["water_area"], "deepsea")
+            finally:
+                os.chdir(previous)
 
     def test_art_file_is_streamed(self):
         with tempfile.TemporaryDirectory() as directory:

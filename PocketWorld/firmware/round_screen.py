@@ -15,6 +15,7 @@ import time
 WIDTH = 240
 HEIGHT = 240
 WORLD_IDS = ("nature", "city", "hybrid", "fantasy", "forest", "aquarium")
+WATER_AREAS = ("river", "ocean", "deepsea")
 FRAME_SIZE = WIDTH * HEIGHT * 2
 
 
@@ -215,6 +216,7 @@ class RoundScreen:
     def __init__(self, driver, i2c=None, touch_reset_pin=None, battery=None):
         self.driver = driver
         self.selected = "nature"
+        self.water_area = "river"
         self.touch = None
         if i2c is not None:
             try:
@@ -230,6 +232,11 @@ class RoundScreen:
             raise ValueError("Unknown world ID")
         self.selected = ident
 
+    def choose_water_area(self, ident):
+        if ident not in WATER_AREAS:
+            raise ValueError("Unknown water area")
+        self.water_area = ident
+
     def next_world(self):
         self.selected = WORLD_IDS[(WORLD_IDS.index(self.selected) + 1) % len(WORLD_IDS)]
         return self.selected
@@ -241,7 +248,8 @@ class RoundScreen:
 
     def show(self, minutes, force=False):
         """Draw once on mode/day changes or scheduled refresh; no frame buffer."""
-        ident = self.selected
+        ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
+            if self.selected == "aquarium" else self.selected
         early_path = "assets/%s-young.dat" % ident
         mature_path = "assets/%s-mature.dat" % ident
         if not (valid_frame(early_path) and valid_frame(mature_path)):
@@ -269,6 +277,7 @@ class RoundScreen:
 
     def status(self):
         return {"selected": self.selected, "connected": True,
+                "water_area": self.water_area,
                 "touch_connected": self.touch is not None,
                 "battery": self.battery_state or {"voltage": None, "low": False,
                                                  "charging": None,

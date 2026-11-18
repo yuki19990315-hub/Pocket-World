@@ -156,6 +156,17 @@ class RoundScreenTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     screen.choose("../main.py")
                 self.assertFalse(screen.show(0))
+                for stage in ("young", "mature"):
+                    with open("assets/river-" + stage + ".dat", "wb") as f:
+                        f.write(b"\x04\x00" * (FRAME_SIZE // 2))
+                screen.choose("aquarium")
+                screen.choose_water_area("river")
+                self.assertTrue(screen.show(0))
+                self.assertEqual(screen.status()["water_area"], "river")
+                screen.choose_water_area("deepsea")
+                self.assertFalse(screen.show(0))
+                with self.assertRaises(ValueError):
+                    screen.choose_water_area("ocean/../../settings")
             finally:
                 os.chdir(previous)
 
