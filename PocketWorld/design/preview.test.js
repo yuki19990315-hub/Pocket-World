@@ -38,6 +38,18 @@ const modes = ["city", "forest", "aquarium", "nature", "hybrid", "fantasy"]
   .map((name) => { const node = new MockElement(); node.dataset.world = name; return node; });
 
 let drawCount = 0;
+let imageDrawCount = 0;
+const imageSources = [];
+class MockImage {
+  constructor() { this.complete = false; this.naturalWidth = 0; }
+  set src(url) {
+    assert.match(url, /^assets\/(city|forest|aquarium|nature|hybrid|fantasy)-(young|mature)\.png$/);
+    assert.ok(fs.existsSync(path.join(__dirname, url)), "missing image asset " + url);
+    this.complete = true;
+    this.naturalWidth = 240;
+    imageSources.push(url);
+  }
+}
 const canvasContext = {
   fillRect(x, y, width, height) {
     assert.ok([x, y, width, height].every(Number.isFinite), "invalid pixel coordinate");
@@ -50,6 +62,13 @@ const canvasContext = {
     assert.ok([x, y, rx, ry].every(Number.isFinite), "invalid ellipse");
   },
   moveTo() {}, lineTo() {}, closePath() {}, clip() {}, fill() {}, stroke() {},
+  drawImage(image, x, y, width, height) {
+    assert.ok(image.complete && image.naturalWidth, "unloaded image");
+    assert.deepEqual([x, y, width, height], [0, 0, 240, 240]);
+    drawCount++;
+    imageDrawCount++;
+  },
+  scale(x, y) { assert.deepEqual([x, y], [2, 2]); },
   save() {}, restore() {}, clearRect() {}
 };
 nodes.world.getContext = () => canvasContext;
@@ -68,13 +87,15 @@ const document = {
 };
 const js = fs.readFileSync(path.join(__dirname, "preview.js"), "utf8");
 const source = fs.readFileSync(path.join(__dirname, "preview.html"), "utf8");
-assert.match(source, /<canvas id="world" width="120" height="120"/);
+assert.match(source, /<canvas id="world" width="240" height="240"/);
 assert.match(source, /<script src="preview.js"><\/script>/);
 
-vm.runInNewContext(js, { document, Math, console, requestAnimationFrame: (fn) => callbacks.push(fn) });
+vm.runInNewContext(js, { document, Math, console, Image: MockImage, requestAnimationFrame: (fn) => callbacks.push(fn) });
+assert.equal(imageSources.length, 12, "six worlds with two painted stages each");
 assert.equal(nodes["world-name"].textContent, "街の世界");
 assert.equal(nodes["stat-a"].textContent, "1");
 assert.ok(drawCount > 0);
+assert.ok(imageDrawCount >= 2, "draws young and mature artwork");
 
 nodes.day.listeners.input({ target: { value: "7" } });
 assert.equal(nodes["day-label"].textContent, "DAY 7");
@@ -83,9 +104,11 @@ assert.ok(nodes.events.children.some((x) => x.children[0].textContent === "DAY 7
 
 for (const mode of modes) {
   const before = drawCount;
+  const previousImageDraws = imageDrawCount;
   mode.click();
   assert.equal(mode.attributes["aria-pressed"], "true");
   assert.ok(drawCount > before, "scene " + mode.dataset.world + " did not paint");
+  assert.equal(imageDrawCount, previousImageDraws + 2, "artwork for " + mode.dataset.world + " was not drawn");
   assert.ok(nodes["world-name"].textContent.length > 0);
 }
 nodes["plus-week"].click();

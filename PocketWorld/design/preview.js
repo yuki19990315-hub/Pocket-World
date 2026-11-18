@@ -1,4 +1,4 @@
-/* Pocket World standalone pixel-art direction study.
+/* Pocket World illustrated background / ambient animation study.
  * Intentionally separate from MicroPython firmware and its real-time save data.
  * No network, microphone, storage, or external dependency.
  */
@@ -8,6 +8,17 @@
   const canvas = document.getElementById("world");
   const ctx = canvas.getContext("2d", { alpha: false });
   ctx.imageSmoothingEnabled = false;
+  const assetImages = {};
+  for (const world of ["city", "forest", "aquarium", "nature", "hybrid", "fantasy"]) {
+    const pair = {};
+    for (const stage of ["young", "mature"]) {
+      const picture = new Image();
+      picture.onload = () => drawScene(animatedSeconds);
+      picture.src = `assets/${world}-${stage}.png`;
+      pair[stage] = picture;
+    }
+    assetImages[world] = pair;
+  }
   const limit = (value, low, high) => Math.max(low, Math.min(high, value));
   const pixel = (value) => Math.round(value);
   const rect = (x, y, width, height, fill) => {
@@ -424,18 +435,97 @@
 
   function drawScene(t) {
     ctx.save();
-    ctx.clearRect(0, 0, 120, 120);
-    ctx.beginPath(); ctx.arc(60, 60, 59, 0, Math.PI * 2); ctx.clip();
+    ctx.clearRect(0, 0, 240, 240);
+    ctx.beginPath(); ctx.arc(120, 120, 119, 0, Math.PI * 2); ctx.clip();
     const g = growth();
-    if (selected === "city") cityScene(g, t, false);
-    if (selected === "forest") forestScene(g, t);
-    if (selected === "aquarium") aquariumScene(g, t);
-    if (selected === "nature") natureScene(g, t);
-    if (selected === "hybrid") cityScene(g, t, true);
-    if (selected === "fantasy") fantasyScene(g, t);
+    const pair = assetImages[selected];
+    if (pair.young.complete && pair.young.naturalWidth && pair.mature.complete && pair.mature.naturalWidth) {
+      // A stable scene at both ends of the timeline; gradual painterly dissolve in between.
+      ctx.drawImage(pair.young, 0, 0, 240, 240);
+      ctx.globalAlpha = limit(elapsedDays / 30, 0, 1);
+      ctx.drawImage(pair.mature, 0, 0, 240, 240);
+      ctx.globalAlpha = 1;
+      if (night() && selected !== "fantasy" && selected !== "aquarium") {
+        rect(0, 0, 240, 240, "#0b1e5360");
+      }
+      ctx.save();
+      ctx.scale(2, 2);
+      livingDetails(selected, g, t);
+      ctx.restore();
+    } else {
+      // Gracefully retain the original compact procedural sketch if an asset is missing.
+      ctx.save();
+      ctx.scale(2, 2);
+      if (selected === "city") cityScene(g, t, false);
+      if (selected === "forest") forestScene(g, t);
+      if (selected === "aquarium") aquariumScene(g, t);
+      if (selected === "nature") natureScene(g, t);
+      if (selected === "hybrid") cityScene(g, t, true);
+      if (selected === "fantasy") fantasyScene(g, t);
+      ctx.restore();
+    }
     ctx.restore();
-    ctx.beginPath(); ctx.arc(60, 60, 59, 0, Math.PI * 2);
+    ctx.beginPath(); ctx.arc(120, 120, 119, 0, Math.PI * 2);
     ctx.lineWidth = 1.2; ctx.strokeStyle = "#ffffff38"; ctx.stroke();
+  }
+
+  function livingDetails(world, g, t) {
+    // Details deliberately stay tiny; the painted backgrounds are the stars.
+    if (world === "city" || world === "hybrid") {
+      const walkers = Math.min(world === "city" ? 4 : 2, 1 + Math.floor(g * 4));
+      for (let i = 0; i < walkers; i++) {
+        const speed = i % 2 ? -1.4 : 1.4;
+        const x = 25 + ((i * 32 + t * speed + 2000) % 76);
+        const y = 84 + i * 5;
+        person(x, y, ["#bc594a", "#5c7eb1", "#e7b55e", "#8a70ab"][i], t);
+      }
+      if (world === "hybrid" && g > .3) rabbit(83, 95, t);
+    }
+    if (world === "forest") {
+      if (g > .1) rabbit(70 + Math.sin(t * .45) * 5, 90, t);
+      if (g > .3 || night()) {
+        const rand = random(944);
+        for (let i = 0; i < 12; i++) {
+          const x = 16 + rand() * 87, y = 20 + rand() * 73;
+          if (Math.sin(t * 2.4 + i * 2) > .42) rect(x, y + Math.sin(t + i) * 2, 1, 2, "#fff3a8");
+        }
+      }
+    }
+    if (world === "aquarium") {
+      const count = 1 + Math.floor(g * 4);
+      for (let i = 0; i < count; i++) {
+        const direction = i % 2 ? -1 : 1;
+        const x = 20 + ((i * 37 + direction * t * (3 + i) + 3000) % 80);
+        const y = 26 + (i * 19) % 62;
+        fish(x, y, ["#ffd77f", "#ffa990", "#a9e5d9", "#f4c7f2"][i % 4], t, direction);
+      }
+      for (let i = 0; i < 14; i++) {
+        const x = 11 + (i * 31) % 99;
+        const y = (105 + i * 27 - t * (2 + i % 4) + 2400) % 117;
+        bubble(x, y, 1 + i % 2);
+      }
+    }
+    if (world === "nature") {
+      for (let i = 0; i < 2 + Math.floor(g * 3); i++) {
+        const x = 18 + ((i * 29 + t * (1.5 + i * .3)) % 85);
+        const y = 20 + i * 8 + Math.sin(t * 2 + i) * 3;
+        rect(x, y, 2, 1, "#fff8db"); rect(x + 2, y - 1, 2, 1, "#bfd9e9");
+      }
+    }
+    if (world === "fantasy") {
+      const rand = random(1042);
+      for (let i = 0; i < 16; i++) {
+        const x = 16 + rand() * 88, y = 22 + rand() * 76;
+        if (Math.sin(t * 2.4 + i * 1.7) > .2) {
+          rect(x, y + Math.sin(t + i) * 3, 2, 2, i % 2 ? "#fef1b7" : "#d4a9ff");
+        }
+      }
+      if (g > .2) {
+        const x = 10 + (t * 8) % 120;
+        rect(x, 13 + Math.sin(t * 2) * 3, 6, 1, "#fff2d7");
+        rect(x - 5, 14 + Math.sin(t * 2) * 3, 5, 1, "#d7b8f6");
+      }
+    }
   }
 
   function sceneStats() {
