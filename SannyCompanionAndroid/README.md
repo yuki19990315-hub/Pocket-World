@@ -1,0 +1,66 @@
+# サンニー Companion — Android専用アプリ（ソース v0.2）
+
+Nothing Phone (4a) ProなどAndroid端末から、ESP32-S3「サンニー」のPocket Worldを観察し、画像・データ・ゲームロジックを無線アップロードするためのネイティブアプリです。
+
+## できること
+
+- **観察:** ESP32のローカルWi-Fiに接続し、4つの世界をWebViewで大きく表示。ESP32側の実データを使用
+- **更新:** Android標準のファイル選択画面からファイルを選び、認証キー付きでESP32へ送信
+- **再起動:** `world_model.py` のアップロード後にサンニーの再起動を指示
+- **設定:** Wi-Fi設定を開く、接続確認、更新キーの保存
+
+アプリはSANNY-ESP32のWi-Fi経由で、固定IP `192.168.4.1` と通信します。クラウドサーバー、広告、ユーザーアカウントはありません。
+
+## APKビルド手順
+
+この成果物には**Android Studioのソースプロジェクト**が含まれています。**APKファイルはまだ生成・実機検証していません。**
+
+1. Android Studioを開き、`SannyCompanionAndroid` フォルダをプロジェクトとして選びます。
+2. Android SDK Platform 35と対応するBuild Tools、JDK 17をセットアップします。
+3. Gradle同期を完了します。Android Gradle Pluginは8.9.2を指定しています（Gradle 8.11.1対応）。
+4. **Build → Build Bundle(s) / APK(s) → Build APK(s)** を実行します。
+5. `app/build/outputs/apk/debug/app-debug.apk` が生成されたらAndroidスマホへインストールします。
+
+Gradle Wrapperのjarは同梱していないため、Android Studioでの同期を前提とします。
+
+**SDKをPCへ入れずにビルドしたい場合:** GitHubリポジトリのルートにある `.github/workflows/build-apk.yml` により、`main` ブランチ更新時または Actions の「Run workflow」からデバッグAPKを生成できます。成功した実行の Artifacts からダウンロードしてください。APKのビルド成功・実機動作は確認が必要です。
+
+## ESP32側の準備
+
+同じパッケージ内の `PocketWorld/README.md` に従って、まずMicroPythonと `main.py`、`world_model.py`、`safe_update.py`、`settings.py`、`index.html` を転送します。
+
+- `settings.py` の `AP_SSID`：`SANNY-ESP32`
+- `AP_PASSWORD`：自分専用の長いWi-Fiパスワードに変更
+- `ADMIN_KEY`：自分専用の長い更新キーに変更（初期値だと無線更新不可）
+
+最初のMicroPython導入と失敗時の復旧にはUSB接続が必要です。
+
+## 更新できるファイル
+
+| アプリで選ぶ名前 | ESP32上の保存先 | 備考 |
+| --- | --- | --- |
+| `index.html` | `/index.html` | スマホ表示UIを更新 |
+| `world_model.py` | `/world_model.py` | 世界のルールを更新。再起動後に反映 |
+| `tree.png` | `/assets/tree.png` | 128KiBまで。利用にはゲームコード側の参照処理が必要 |
+| `data.json` | `/assets/data.json` | 同上 |
+
+`main.py`、`settings.py`、ファームウェア `.bin`、ZIP一括転送、フォルダ全体の差分同期は未対応です。
+
+## セキュリティ・制限
+
+- サンニー専用Wi-Fi内で、HTTPの平文通信を使用します。**職場など共有ネットワークで使わず、秘密のAPパスワードと更新キーを設定**してください。
+- アプリはAndroidのプライベートな保存領域に更新キーを保持します。不要なら保存せず、使うときだけ入力する設計への変更も可能です。
+- アプリの接続先は `http://192.168.4.1/` 固定です。別のWi-Fi内の任意のホストへ接続する機能はありません。
+- 1ファイル最大128KiB。大きな写真やアニメーションには別の転送形式が必要です。
+- Android 17のローカルネットワーク権限は、ターゲットSDK 37以降で必須になります。この試作アプリのターゲットはSDK 35です。今後更新時に権限対応が必要です。
+- Android実機での接続、表示、更新、再起動は未検証です。
+
+## ソースだけの簡易チェック
+
+`tests/SannyApiSelfTest.java` は、ファイル名の許可リストや読み込みサイズを確認するJavaのテスト用ソースです。JDK開発キットの `javac` がある環境でコンパイルして実行できます。
+
+Android仕様の公式参照:
+
+- https://developer.android.com/privacy-and-security/local-network-permission
+- https://developer.android.com/build/releases/agp-8-9-0-release-notes
+- https://developer.android.com/training/data-storage/shared/documents-files

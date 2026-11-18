@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#101f22">
+  <title>Pocket World — 4つの小さな世界</title>
+  <style>
+    :root{color-scheme:dark;--bg:#101d21;--card:#17272b;--stroke:#2d4144;--text:#f1f5ed;--muted:#9bafab;--accent:#bff3bc}
+    *{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 20% -10%,#29453f 0,transparent 48%),var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Noto Sans JP",sans-serif}
+    button{font:inherit;cursor:pointer}button:focus-visible{outline:2px solid #e5ffe3;outline-offset:2px}
+    .shell{max-width:980px;margin:auto;padding:22px clamp(14px,4vw,36px) 48px}
+    header{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:23px}
+    .brand{display:flex;align-items:center;gap:10px;font-size:13px;letter-spacing:.17em;font-weight:850;color:var(--accent)}
+    .brand .planet{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:#315b48;box-shadow:inset -8px -5px #1d3b37;font-size:18px;letter-spacing:0}
+    .connection{border:1px solid #53684b;border-radius:30px;padding:8px 11px;font-size:11px;color:#c6ddc1;background:#24382f;white-space:nowrap}
+    .connection.demo{border-color:#78603e;background:#372d25;color:#ffdaa7}
+    .eyebrow{color:#bedac4;text-transform:uppercase;font-weight:700;font-size:11px;letter-spacing:.18em;margin:0 0 7px}
+    h1{margin:0;font-size:clamp(28px,5vw,40px);letter-spacing:-.04em;line-height:1.22}
+    .intro{color:var(--muted);margin:10px 0 25px;font-size:13px;line-height:1.7}
+    .tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:17px}
+    .tab{background:#18292b;border:1px solid #344a45;border-radius:13px;padding:11px 4px 10px;color:#a9beb5;min-width:0;transition:background .2s,transform .2s}
+    .tab.active{background:#29473b;border-color:#9ac89c;color:#f5fff1;box-shadow:inset 0 0 0 1px #6e9976}
+    .tab .sym{display:block;font-size:22px;margin-bottom:4px;line-height:1.3}
+    .tab .text{font-size:clamp(9px,2.6vw,12px);font-weight:700;display:block;white-space:nowrap}
+    .layout{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(260px,.92fr);gap:17px;align-items:start}
+    .display{position:relative;background:linear-gradient(145deg,#243936,#172629);border:1px solid #50625c;border-radius:27px;padding:15px;box-shadow:0 18px 60px #0003;overflow:hidden}
+    .display:before{content:"";position:absolute;left:-100px;top:-180px;width:300px;height:300px;background:#8ac08d16;border-radius:50%;pointer-events:none}
+    .world-head{display:flex;justify-content:space-between;align-items:flex-start;margin:0 1px 13px;gap:10px}
+    .world-head h2{margin:2px 0 2px;font-size:21px;letter-spacing:-.03em}.world-head p{margin:0;color:var(--muted);font-size:11px}
+    .pill{padding:6px 9px;border-radius:20px;font-size:11px;font-weight:700;color:#e2eacc;background:#3b5549;border:1px solid #68806b}
+    .screen{position:relative;max-width:420px;margin:0 auto;aspect-ratio:1;border-radius:50%;padding:6px;background:#0a1819;box-shadow:0 0 0 5px #384c48,0 0 0 7px #132524,0 17px 28px #050e118a}
+    canvas{display:block;width:100%;height:100%;border-radius:50%;image-rendering:pixelated;touch-action:manipulation;cursor:crosshair}
+    .screen-label{position:absolute;left:50%;bottom:10%;transform:translateX(-50%);white-space:nowrap;background:#0b2121c9;border:1px solid #8fbcab44;color:#f6faee;font-size:11px;padding:5px 10px;border-radius:20px;pointer-events:none}
+    .controls{display:flex;justify-content:space-between;align-items:center;margin-top:17px;gap:10px}
+    .hint{color:#9cb1aa;font-size:11px}.small-btn{color:#e9fbdf;background:#365248;border:1px solid #557b61;padding:9px 13px;border-radius:11px;font-weight:650;font-size:12px}
+    .side{display:grid;gap:13px}.panel{background:#182a2d;border:1px solid var(--stroke);border-radius:19px;padding:18px}
+    .panel h3{display:flex;justify-content:space-between;margin:0 0 15px;font-size:15px}.panel h3 span{font-weight:400;color:#9db2a8;font-size:11px}
+    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.stat{padding:14px 11px;border:1px solid #35504b;background:#213a39;border-radius:13px}
+    .stat small{display:block;font-size:11px;color:#a9c3b5;margin-bottom:4px}.stat strong{font-size:21px;letter-spacing:-.03em}.stat em{font-style:normal;color:#c1d7cb;font-size:11px;margin-left:4px}
+    .timebox{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #334747;color:#ccd9cf;font-size:12px}
+    .timebox:first-of-type{border-top:0}.timebox b{color:#f1f7ed;font-size:12px}
+    .events{margin:0;padding:0;list-style:none}.events li{padding:9px 0;border-top:1px solid #314343;color:#d8e7da;font-size:12px;line-height:1.6}.events li:first-child{border-top:0}
+    .footer{margin-top:20px;font-size:11px;color:#839d93;line-height:1.7}
+    #toast{position:fixed;bottom:30px;left:50%;transform:translate(-50%,10px);opacity:0;transition:.2s;background:#efffe9;color:#213c31;border-radius:14px;padding:11px 17px;max-width:min(350px,90vw);text-align:center;font-size:13px;box-shadow:0 8px 30px #0006;z-index:10;pointer-events:none}
+    #toast.show{transform:translate(-50%,0);opacity:1}
+    @media(max-width:690px){.layout{grid-template-columns:1fr}.panel{padding:16px}.display{padding:13px}.screen{max-width:400px}.shell{padding-top:15px}.world-head h2{font-size:20px}}
+  </style>
+</head>
+<body>
+<main class="shell">
+  <header><div class="brand"><span class="planet">🌍</span>POCKET WORLD</div><div id="connection" class="connection demo">● デモ表示</div></header>
+  <p class="eyebrow">Tiny worlds, quietly growing</p>
+  <h1>デスクの、小さな世界。</h1>
+  <p class="intro">あなたが仕事をしている間も、4つの世界はそれぞれ少しずつ変わっていく。</p>
+  <nav class="tabs" id="tabs" aria-label="世界の切り替え">
+    <button class="tab active" data-world="nature"><span class="sym">🌿</span><span class="text">自然</span></button>
+    <button class="tab" data-world="city"><span class="sym">🏘️</span><span class="text">街</span></button>
+    <button class="tab" data-world="hybrid"><span class="sym">🌾</span><span class="text">共生</span></button>
+    <button class="tab" data-world="fantasy"><span class="sym">✨</span><span class="text">魔法</span></button>
+  </nav>
+  <div class="layout">
+    <section class="display" aria-label="世界の観察">
+      <div class="world-head"><div><p id="subtitle">Forest / Terrarium</p><h2 id="world-title">自然の世界</h2></div><div id="weather" class="pill">☀ 晴れ</div></div>
+      <div class="screen"><canvas id="world-canvas" width="360" height="360" aria-label="世界のドット絵"></canvas><div class="screen-label" id="screen-label">DAY 1 ・ 小さなはじまり</div></div>
+      <div class="controls"><span class="hint">世界をタップして、小さな変化を起こそう</span><button class="small-btn" id="zoom-btn">拡大する ＋</button></div>
+    </section>
+    <div class="side">
+      <section class="panel"><h3>世界のようす <span>LIVE STATUS</span></h3><div class="stats" id="stats"></div></section>
+      <section class="panel"><h3>観察ノート <span>FIELD NOTES</span></h3><div class="timebox"><span>経過時間</span><b id="elapsed">0分</b></div><div class="timebox"><span>現在の発展段階</span><b id="stage">誕生したばかり</b></div><div class="timebox"><span>更新</span><b id="sync">5秒ごと</b></div></section>
+      <section class="panel"><h3>最近のできごと <span>EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
+    </div>
+  </div>
+  <p class="footer">ESP32に接続中は実際の保存データを表示します。デモ表示の場合はブラウザ内で動く仮の世界です。初期版では60秒ごとに自動成長します。</p>
+</main>
+<div id="toast" role="status"></div>
+<script>
+(() => {
+  "use strict";
+  const worlds = ["nature", "city", "hybrid", "fantasy"];
+  const defaults = {
+    nature: {name:"自然の世界",label:"Forest / Terrarium",seed:13579,plants:10,wildlife:2,residents:0,houses:0,magic:0},
+    city: {name:"街の世界",label:"Town / Civilization",seed:24681,plants:4,wildlife:0,residents:1,houses:1,magic:0},
+    hybrid: {name:"自然＋文明",label:"Harmony / Coexistence",seed:35791,plants:10,wildlife:2,residents:0,houses:0,magic:0},
+    fantasy: {name:"ファンタジー",label:"Arcana / Fantasy",seed:46801,plants:10,wildlife:2,residents:0,houses:0,magic:1}
+  };
+  const palette = {
+    nature:{water:"#65a7a3",deep:"#3c8b91",soil:"#b8b476",ground:"#80ba77",light:"#9bd483",shadow:"#4a7d59",trees:"#285d4f",trunk:"#73563f",roof:"#b77d52"},
+    city:{water:"#719cba",deep:"#4e83a5",soil:"#c9b27c",ground:"#b7b889",light:"#d0c99a",shadow:"#7e966b",trees:"#52745e",trunk:"#755c46",roof:"#a45f59"},
+    hybrid:{water:"#6ab6b5",deep:"#3e969b",soil:"#c1b07b",ground:"#8abc79",light:"#a8d08c",shadow:"#5f9165",trees:"#376d50",trunk:"#695541",roof:"#bf775b"},
+    fantasy:{water:"#675a96",deep:"#453a77",soil:"#9685a1",ground:"#7d85a0",light:"#9da1bb",shadow:"#5b6684",trees:"#4b517f",trunk:"#6c587a",roof:"#bf8ad7"}
+  };
+  let selected = "nature", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
+  const $ = id => document.getElementById(id);
+  const canvas = $("world-canvas"), ctx = canvas.getContext("2d");
+  ctx.imageSmoothingEnabled = false;
+  const startTime = Date.now();
+  let demoMinutes = 0;
+
+  function makeDemo(){
+    demoMinutes = Math.floor((Date.now()-startTime)/1200);
+    return worlds.map((key,i) => {
+      const base = defaults[key], m = demoMinutes;
+      return {...base, id:key, minutes:m, weather:m%36>29?"rain":"sunny", events:["この世界が誕生しました"],
+        plants:base.plants+Math.floor(m/9),wildlife:base.wildlife+Math.floor(m/47),
+        residents:base.residents+((i===1||i>=2)?Math.floor(m/70):0),
+        houses:base.houses+((i===1||i>=2)?Math.floor(m/140):0),
+        magic:base.magic+(i===3?Math.floor(m/55):0)};
+    });
+  }
+  function getWorld(){return current[selected] || {...defaults[selected],minutes:0,weather:"sunny",events:[]};}
+  function hash(x,y,seed){let z=(x*374761393 + y*668265263 + seed*1447)|0;z=Math.imul(z^(z>>>13),1274126177);return ((z^(z>>>16))>>>0)/4294967295;}
+  function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h);}
+  function tree(x,y,p,size=1){const k=size;rect(x-2*k,y+4*k,4*k,8*k,p.trunk);rect(x-8*k,y-8*k,16*k,12*k,p.trees);rect(x-5*k,y-12*k,10*k,6*k,p.shadow);rect(x-6*k,y-8*k,5*k,4*k,p.ground);}
+  function house(x,y,p,type){rect(x-10,y-5,20,18,type==="fantasy"?"#c4a6c0":"#e3cda0");rect(x-12,y-10,24,7,p.roof);rect(x-7,y+1,4,4,"#688a99");rect(x+3,y+1,4,4,"#688a99");rect(x-2,y+5,5,8,"#715346");rect(x-15,y+13,30,3,p.shadow);}
+  function villager(x,y,seed){rect(x-2,y-4,4,4,seed%2?"#f4d0ac":"#dfac8f");rect(x-3,y,6,6,seed%2?"#e7a768":"#6e9ab0");rect(x-2,y+6,2,3,"#4b4c56");rect(x+1,y+6,2,3,"#4b4c56");}
+  function crystal(x,y){rect(x-3,y-8,6,14,"#bc9ee9");rect(x,y-11,3,14,"#e6cbfa");rect(x-6,y-3,5,8,"#7b80c6");rect(x+3,y-2,4,7,"#6ea5d5");}
+  function stage(world){const m=world.minutes;return m<35?"小さなはじまり":m<140?"新しい命":m<350?"育ちはじめた世界":m<900?"にぎやかな世界":"進化しつづける世界";}
+  function drawScene(world, t){
+    const p=palette[selected], minute=world.minutes||0;
+    ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
+    rect(0,0,360,360,p.water);ctx.save();
+    if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
+    const size=12, cols=30;hitAreas=[];
+    for(let gy=0;gy<cols;gy++)for(let gx=0;gx<cols;gx++){
+      const x=gx*size,y=gy*size,cx=x+6-180,cy=y+6-180;
+      const r=Math.sqrt(cx*cx*.93 + cy*cy*1.08);
+      const island=147 + (hash(gx>>2,gy>>2,world.seed)-.5)*18;
+      if(r>island){rect(x,y,size,size,hash(gx,gy,world.seed)>.82?p.deep:p.water);continue;}
+      const n=hash(gx,gy,world.seed),shore=r>island-16;
+      rect(x,y,size,size,shore?p.soil:(n>.78?p.light:p.ground));
+      if(!shore && n>.92)rect(x+6,y+4,3,3,p.shadow);
+    }
+    const hasCity = selected!=="nature";
+    if(hasCity && world.houses>0){
+      rect(150,144,60,82,"#baad82");rect(117,174,132,16,"#c6b88c");rect(170,115,16,138,"#c6b88c");
+    }
+    // Deterministic decoration positions, tied to saved world seed and population.
+    const vegetation=Math.min(45,Math.max(5,world.plants|0));
+    for(let i=0;i<vegetation;i++){
+      const x=40+Math.floor(hash(i,17,world.seed)*270),y=45+Math.floor(hash(i,18,world.seed)*245);
+      if(Math.hypot(x-180,y-180)>129 || (hasCity && x>130&&x<230&&y>122&&y<250))continue;
+      tree(x,y,p,hash(i,19,world.seed)>.82?1.25:1);
+    }
+    const housePositions=[[150,149],[207,159],[151,212],[207,218],[107,188],[245,190],[177,109],[179,260],[111,120],[246,125],[91,244],[260,248],[110,275],[270,90],[75,151],[260,275]];
+    for(let i=0;i<Math.min(world.houses,housePositions.length);i++){
+      const [x,y]=housePositions[i];house(x,y,p,selected);hitAreas.push({x,y,name:i===0?"はじまりの家":"村の家 " + (i+1)});
+    }
+    if(selected==="fantasy")for(let i=0;i<Math.min(9,2+world.magic/5);i++){
+      let x=60+hash(i,101,world.seed)*240,y=65+hash(i,102,world.seed)*210;
+      crystal(x,y);
+    }
+    for(let i=0;i<Math.min(world.wildlife,15);i++){
+      let x=70+hash(i,501,world.seed)*205,y=60+hash(i,503,world.seed)*250;
+      if(Math.hypot(x-180,y-180)>129)continue;
+      const bob=Math.sin(t/700+i*3)*2;
+      rect(x,y+bob,5,4,selected==="fantasy"?"#e8b3ec":"#e8e7c2");rect(x+3,y+bob-2,3,3,"#3d4c44");
+    }
+    for(let i=0;i<Math.min(world.residents,24);i++){
+      let x=140+hash(i,601,world.seed)*75,y=140+hash(i,602,world.seed)*90;
+      x+=Math.sin(t/1600+i)*9;y+=Math.cos(t/2000+i)*9;
+      villager(x,y,i);
+    }
+    ctx.restore();
+    const hour=(minute/15)%24;
+    if(hour>17||hour<6){ctx.fillStyle="rgba(18,24,54,.27)";ctx.fillRect(0,0,360,360);}
+    if(world.weather==="rain"){
+      ctx.strokeStyle="#c3e3e5aa";ctx.lineWidth=2;ctx.beginPath();
+      for(let i=0;i<38;i++){const x=hash(i,71,world.seed)*360,y=(hash(i,72,world.seed)*360+t/17)%360;ctx.moveTo(x,y);ctx.lineTo(x-6,y+14);}ctx.stroke();
+    }
+    ctx.restore();
+  }
+  function render(){
+    const w=getWorld();$("world-title").textContent=w.name;$("subtitle").textContent=defaults[selected].label;
+    $("weather").textContent=({sunny:"☀ 晴れ",cloudy:"☁ くもり",rain:"☂ 雨",windy:"🍃 風"})[w.weather]||"☀ 晴れ";
+    $("screen-label").textContent="DAY "+(Math.floor(w.minutes/1440)+1)+" ・ "+stage(w);
+    const metrics=[["🌿 植物",w.plants,"株"],["🐾 動物",w.wildlife,"匹"],["👤 住民",w.residents,"人"],[selected==="fantasy"?"✨ 魔力":"🏠 建物",selected==="fantasy"?w.magic:w.houses,selected==="fantasy"?"pt":"軒"]];
+    $("stats").innerHTML=metrics.map(([label,value,unit])=>'<div class="stat"><small>'+label+'</small><strong>'+value+'</strong><em>'+unit+'</em></div>').join("");
+    $("elapsed").textContent=Math.floor(w.minutes/60)+"時間 "+(w.minutes%60)+"分";$("stage").textContent=stage(w);
+    const list=(w.events||[]).slice(-4).reverse();$("events").replaceChildren(...(list.length?list:["この世界が誕生しました"]).map(msg=>{const li=document.createElement("li");li.textContent=msg;return li;}));
+  }
+  function setWorld(id){if(!worlds.includes(id))return;selected=id;document.querySelectorAll('.tab').forEach(el=>{const active=el.dataset.world===id;el.classList.toggle('active',active);el.setAttribute('aria-pressed',active);});render();}
+  function showToast(msg){const el=$("toast");el.textContent=msg;el.classList.add("show");clearTimeout(toastTimer);toastTimer=setTimeout(()=>el.classList.remove("show"),2400);}
+  async function fetchState(){
+    try{
+      const response=await fetch("/api/state?clock="+Math.floor(Date.now()/1000),{cache:"no-store",signal:AbortSignal.timeout(2400)});
+      if(!response.ok)throw Error("No ESP32 API");const data=await response.json();
+      if(!Array.isArray(data.worlds)||data.worlds.length!==4)throw Error("Bad state");
+      current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
+      live=true;$("connection").textContent="● ESP32に接続中";$("connection").classList.remove("demo");
+    }catch(err){
+      if(live)showToast("ESP32との通信が切れました。再接続を待っています。");
+      live=false;current=Object.fromEntries(makeDemo().map(w=>[w.id,w]));
+      $("connection").textContent="● デモ表示";$("connection").classList.add("demo");
+    }
+    render();
+  }
+  document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>setWorld(btn.dataset.world)));
+  $("zoom-btn").addEventListener("click",()=>{enlarged=!enlarged;$("zoom-btn").textContent=enlarged?"元に戻す −":"拡大する ＋";});
+  canvas.addEventListener('click',async ev=>{
+    const r=canvas.getBoundingClientRect(),x=(ev.clientX-r.left)*360/r.width,y=(ev.clientY-r.top)*360/r.height;
+    const px=enlarged?(x-180)/1.32+180:x,py=enlarged?(y-180)/1.32+180:y;
+    const hit=hitAreas.find(a=>Math.abs(a.x-px)<18&&Math.abs(a.y-py)<20);
+    showToast(hit?"🏠 "+hit.name+"：小さな住民たちの暮らしの場所です":"🌱 "+getWorld().name+"に触れました");
+    if(live){try{await fetch('/api/touch?world='+selected,{method:'POST'});await fetchState();}catch(err){/* next poll retries */}}
+  });
+  let downX=null;
+  canvas.addEventListener('touchstart',e=>{downX=e.touches[0].clientX},{passive:true});
+  canvas.addEventListener('touchend',e=>{if(downX===null)return;const dx=e.changedTouches[0].clientX-downX;if(Math.abs(dx)>45)setWorld(worlds[(worlds.indexOf(selected)+(dx<0?1:3))%4]);downX=null},{passive:true});
+  function frame(t){drawScene(getWorld(),t);requestAnimationFrame(frame);}setWorld(selected);fetchState();setInterval(fetchState,5000);requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

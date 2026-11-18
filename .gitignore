@@ -1,0 +1,18 @@
+# Generated Python caches
+__pycache__/
+*.py[cod]
+
+# Android/Gradle local and generated files
+.gradle/
+.idea/
+**/build/
+local.properties
+*.iml
+
+# Build artifacts
+*.apk
+*.aab
+
+# Private device configuration: do not commit real passwords/keys
+firmware/settings.local.py
+PocketWorld/firmware/settings.local.py
