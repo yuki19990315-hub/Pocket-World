@@ -79,12 +79,15 @@ class TestProtocol(unittest.TestCase):
         class Screen:
             selected = "nature"
             water_area = "river"
+            brightness_setting = 65
             def choose(self, world):
                 if world not in ("nature", "city"):
                     raise ValueError("Unknown world")
                 self.selected = world
             def choose_water_area(self, area):
                 self.water_area = area
+            def set_brightness(self, percent):
+                self.brightness_setting = percent
             def show(self, minutes, force=False):
                 return True
             def status(self):
@@ -120,6 +123,7 @@ class TestProtocol(unittest.TestCase):
         class Screen:
             selected = "nature"
             water_area = "river"
+            brightness_setting = 65
             def choose(self, ident):
                 self.selected = ident
             def choose_water_area(self, area):
@@ -165,6 +169,42 @@ class TestProtocol(unittest.TestCase):
                 invalid = FakeClient(request("GET", "/assets/../worlds.json"))
                 self.assertFalse(main.service(invalid, self.engine))
                 self.assertIn(b"404 Not Found", invalid.written)
+            finally:
+                os.chdir(previous)
+
+    def test_brightness_setting_requires_key_and_persists(self):
+        class Screen:
+            selected, water_area, brightness_setting = "nature", "river", 65
+            def set_brightness(self, value):
+                if type(value) is not int or not 10 <= value <= 100:
+                    raise ValueError("Invalid brightness")
+                self.brightness_setting = value
+            def status(self):
+                return {"connected": True, "brightness": self.brightness_setting}
+        settings.ADMIN_KEY = "secret"
+        screen = Screen()
+        body = b'{"brightness":35}'
+        with tempfile.TemporaryDirectory() as directory:
+            previous = os.getcwd()
+            os.chdir(directory)
+            try:
+                denied = FakeClient(request("POST", "/api/display/brightness",
+                    {"Content-Length":str(len(body))}, body))
+                main.service(denied, self.engine, screen=screen)
+                self.assertIn(b"403 Forbidden", denied.written)
+                valid = FakeClient(request("POST", "/api/display/brightness",
+                    {"X-Admin-Key":"secret", "Content-Length":str(len(body))}, body))
+                main.service(valid, self.engine, screen=screen)
+                self.assertIn(b"200 OK", valid.written)
+                self.assertEqual(screen.brightness_setting, 35)
+                with open("display.json") as saved:
+                    self.assertEqual(json.load(saved)["brightness"], 35)
+                bad = b'{"brightness":0}'
+                invalid = FakeClient(request("POST", "/api/display/brightness",
+                    {"X-Admin-Key":"secret", "Content-Length":str(len(bad))}, bad))
+                main.service(invalid, self.engine, screen=screen)
+                self.assertIn(b"400 Bad Request", invalid.written)
+                self.assertEqual(screen.brightness_setting, 35)
             finally:
                 os.chdir(previous)
 

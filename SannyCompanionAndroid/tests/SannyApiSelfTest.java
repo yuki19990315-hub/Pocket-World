@@ -22,6 +22,12 @@ public class SannyApiSelfTest {
         check(schedule.contains("\"clock\":1790000000"));
         check(schedule.contains("\"exclude_jp_holidays\":true"));
         check(schedule.contains("\"wake\":\"08:30\""));
-        System.out.println("SannyApiSelfTest: 11 checks passed");
+        for (int invalid : new int[]{0, 101}) {
+            try {
+                SannyApi.setDisplayBrightness(invalid, "test");
+                throw new AssertionError("Out-of-range brightness accepted");
+            } catch (IOException expected) { /* reject before any network call */ }
+        }
+        System.out.println("SannyApiSelfTest: 13 checks passed");
     }
 }

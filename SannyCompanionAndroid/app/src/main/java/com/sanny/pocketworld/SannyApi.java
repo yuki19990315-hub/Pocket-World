@@ -118,6 +118,18 @@ public final class SannyApi {
         finally { connection.disconnect(); }
     }
 
+    public static String display() throws IOException {
+        HttpURLConnection connection = request("/api/display", "GET", null);
+        try { return readResponse(connection); }
+        finally { connection.disconnect(); }
+    }
+
+    public static String setDisplayBrightness(int percent, String secret) throws IOException {
+        if (percent < 10 || percent > 100)
+            throw new IOException("画面の明るさは10〜100%で設定してください");
+        return sendJson("/api/display/brightness", "{\"brightness\":" + percent + "}", secret);
+    }
+
     public static String setShakeEvents(boolean enabled, String secret) throws IOException {
         return sendJson("/api/motion/settings", "{\"shake_enabled\":" + (enabled ? "true" : "false") + "}", secret);
     }

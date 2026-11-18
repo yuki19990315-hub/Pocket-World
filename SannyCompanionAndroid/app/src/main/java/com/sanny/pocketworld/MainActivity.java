@@ -30,6 +30,7 @@ import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -348,7 +349,31 @@ public class MainActivity extends Activity {
         Button syncClock=secondary("現在時刻をサンニーと同期");
         syncClock.setOnClickListener(v->syncSannyClock(powerStatus));
         add(routine,syncClock,46,12);
-        add(routine,label("※ ESP32本体にはv0.5のmain.pyが必要。画面OFF・深いスリープは実機検証前のため安全ロック中で、時刻設定を保存してもまだ自動休眠しません。",12,MUTED,false),-2,5);
+        add(routine,label("※ v0.6のmain.pyなら時間外は画面のバックライトだけ消え、Wi-Fi接続と設定変更は可能です。電池消費を抑える深いスリープは実機検証前のため安全ロック中です。",12,MUTED,false),-2,5);
+
+        LinearLayout lighting=vertical(17);
+        lighting.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
+        add(col,lighting,-2,16);
+        add(lighting,label("☀ 丸形画面の明るさ",17,ACCENT,true),-2,8);
+        add(lighting,label("10〜100%で調整。電池消費を抑えるなら少し暗めがおすすめです。勤務時間外はこの設定に関係なく画面OFFになります。",12,MUTED,false),-2,8);
+        TextView brightnessStatus=label("本体から明るさを取得してね。",12,MUTED,false);
+        add(lighting,brightnessStatus,-2,6);
+        SeekBar brightness=new SeekBar(this);
+        brightness.setMax(90);brightness.setProgress(55);
+        brightness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
+            @Override public void onProgressChanged(SeekBar bar,int progress,boolean user){
+                if(user)brightnessStatus.setText("設定予定："+(progress+10)+"%（まだ本体へ送信していません）");
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        add(lighting,brightness,40,9);
+        Button loadBrightness=secondary("本体の明るさを取得");
+        loadBrightness.setOnClickListener(v->fetchBrightness(brightness,brightnessStatus));
+        add(lighting,loadBrightness,45,9);
+        Button saveBrightness=action("明るさをサンニーに保存");
+        saveBrightness.setOnClickListener(v->saveBrightness(brightness.getProgress()+10,brightnessStatus));
+        add(lighting,saveBrightness,45,7);
 
         LinearLayout motionBox=vertical(17);
         motionBox.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
@@ -388,7 +413,8 @@ public class MainActivity extends Activity {
                 String start=schedule.getString("wake"),end=schedule.getString("sleep");
                 boolean active=schedule.getBoolean("enabled");
                 String info="現在の設定を読み込みました。"+
-                    (data.optBoolean("sleep_supported")?" スリープ制御あり。":" 実機検証待ちのため自動スリープは安全ロック中。")+
+                    (data.optBoolean("screen_blank_supported")?" 時間外の画面消灯に対応。":" 画面消灯には本体の更新が必要。")+
+                    (data.optBoolean("sleep_supported")?" 深いスリープも有効。":" 深いスリープは安全ロック中。")+
                     (data.optBoolean("clock_synced")?" 時計同期済み。":" 時計の同期が必要。")+
                     ("unknown".equals(data.optString("mode"))?" 祝日データの更新が必要。":"");
                 runOnUiThread(()->{wake[0]=start;sleep[0]=end;enabled.setChecked(active);
@@ -405,7 +431,8 @@ public class MainActivity extends Activity {
             try{
                 JSONObject data=new JSONObject(SannyApi.setPowerSchedule(enabled,wake,sleep,secret));
                 String result="✓ サンニー本体へ保存しました。"+
-                    (data.optBoolean("sleep_supported")?"":" 休眠動作は実機検証待ちで無効です。");
+                    (data.optBoolean("screen_blank_supported")?" 時間外は画面消灯します。":" 画面消灯は本体更新後に利用できます。")+
+                    (data.optBoolean("sleep_supported")?" 深いスリープ有効。":" 深いスリープは実機検証待ちです。");
                 runOnUiThread(()->{status.setText(result);setConnected(true);});
             }catch(Exception err){runOnUiThread(()->status.setText("保存できませんでした（未反映）："+err.getMessage()));}
         }).start();
@@ -439,6 +466,29 @@ public class MainActivity extends Activity {
             try{SannyApi.setShakeEvents(enabled,secret);
                 runOnUiThread(()->status.setText("✓ 本体に保存しました（振動演出："+(enabled?"ON":"OFF")+"）"));}
             catch(Exception err){runOnUiThread(()->status.setText("保存できませんでした（未反映）："+err.getMessage()));}
+        }).start();
+    }
+
+    private void fetchBrightness(SeekBar brightness, TextView status) {
+        preferWifiRoute();status.setText("本体の明るさを取得中…");
+        new Thread(()->{
+            try{
+                JSONObject data=new JSONObject(SannyApi.display());
+                int percent=data.getInt("brightness");
+                if(percent<10||percent>100)throw new java.io.IOException("本体の明るさが範囲外です");
+                String info=percent+"%"+(data.optBoolean("screen_on",true)?"":" ・ いまは勤務時間外で画面OFF");
+                runOnUiThread(()->{brightness.setProgress(percent-10);status.setText(info);});
+            }catch(Exception err){runOnUiThread(()->status.setText("取得できません："+err.getMessage()));}
+        }).start();
+    }
+
+    private void saveBrightness(int percent, TextView status) {
+        final String secret=preferences.getString("admin_key","");
+        preferWifiRoute();status.setText("明るさを保存中…");
+        new Thread(()->{
+            try{SannyApi.setDisplayBrightness(percent,secret);
+                runOnUiThread(()->status.setText("✓ 明るさを"+percent+"%に保存しました"));}
+            catch(Exception err){runOnUiThread(()->status.setText("保存失敗："+err.getMessage()));}
         }).start();
     }
 

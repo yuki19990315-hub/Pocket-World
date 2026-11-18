@@ -3,7 +3,7 @@ import sys
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
-from world_model import (MAX_OFFLINE_SECONDS, PocketWorld,
+from world_model import (MATURITY_MINUTES, MAX_OFFLINE_SECONDS, PocketWorld,
                          WATER_UNLOCK_MINUTES)
 
 
@@ -112,11 +112,39 @@ class TestPocketWorld(unittest.TestCase):
         aquarium["water_areas"]["river"]["fish"] = 999
         self.assertEqual(engine.worlds["aquarium"]["water_areas"]["river"]["fish"], 2)
 
+    def test_event_journal_is_bounded_and_snapshot_is_immutable(self):
+        engine = PocketWorld()
+        for _ in range(40):
+            engine.tap("nature")
+        self.assertEqual(len(engine.worlds["nature"]["journal"]), 24)
+        snapshot = engine.snapshot()
+        snapshot["worlds"][0]["journal"][-1]["message"] = "tampered"
+        self.assertNotEqual(engine.worlds["nature"]["journal"][-1]["message"], "tampered")
+        saved = engine.persistable()
+        self.assertEqual(PocketWorld(saved).worlds, engine.worlds)
+
+    def test_town_has_a_month_of_changes(self):
+        engine = PocketWorld()
+        engine.advance(3 * 3600)
+        early = engine.worlds["city"]["houses"]
+        self.assertEqual(early, 2)
+        engine.advance(4 * 86400)
+        day_four = engine.worlds["city"]["houses"]
+        self.assertGreater(day_four, early)
+        self.assertLess(day_four, 16)
+        while engine.worlds["city"]["minutes"] < MATURITY_MINUTES:
+            remaining = MATURITY_MINUTES - engine.worlds["city"]["minutes"]
+            engine.advance(min(6 * 86400, remaining * 60))
+        self.assertGreater(engine.worlds["city"]["houses"], day_four)
+        self.assertEqual(engine.worlds["city"]["minutes"], MATURITY_MINUTES)
+        self.assertTrue(any("成熟" in event for event in engine.worlds["city"]["events"]) or
+                        any("成熟" in item["message"] for item in engine.worlds["city"]["journal"]))
+
     def test_forest_grows_independently(self):
         engine = PocketWorld()
         before_city = dict(engine.worlds["city"])
         before_plants = engine.worlds["forest"]["plants"]
-        engine._step_forest(engine.worlds["forest"], 360)
+        engine._step_forest(engine.worlds["forest"], 720)
         self.assertGreater(engine.worlds["forest"]["plants"], before_plants)
         self.assertEqual(engine.worlds["city"], before_city)
 

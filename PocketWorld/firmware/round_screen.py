@@ -160,6 +160,9 @@ class GC9A01:
 
 class CST816Touch:
     ADDRESS = 0x15
+    GESTURES = {1: "swipe_up", 2: "swipe_down", 3: "swipe_left",
+                4: "swipe_right", 5: "tap", 11: "double_tap",
+                12: "long_press"}
 
     def __init__(self, i2c, reset_pin=None):
         self.i2c = i2c
@@ -170,18 +173,59 @@ class CST816Touch:
         if self.ADDRESS not in i2c.scan():
             raise OSError("CST816S not found on I2C")
         self.was_down = False
+        self.start = None
+        self.last_point = None
+        self.reported = False
+        self.ignore_late_gesture = False
 
-    def tapped(self):
-        """Edge-triggered single touch. Gesture registers must be tested on board."""
-        data = self.i2c.readfrom_mem(self.ADDRESS, 0x02, 5)
-        down = (data[0] & 0x0f) == 1
-        tapped = down and not self.was_down
-        self.was_down = down
-        if not tapped:
+    def poll_event(self):
+        """Read documented gesture/finger/coordinate registers at 0x01..0x06.
+
+        Fallback swipe detection uses finger-down/move/up positions. A touch is
+        not treated as a tap at press time, so swiping cannot switch a world
+        accidentally before it is recognized. Physical tuning is pending.
+        """
+        data = self.i2c.readfrom_mem(self.ADDRESS, 0x01, 6)
+        gesture = self.GESTURES.get(data[0])
+        down = (data[1] & 0x0f) == 1
+        x = ((data[2] & 15) << 8) | data[3]
+        y = ((data[4] & 15) << 8) | data[5]
+        valid = x < WIDTH and y < HEIGHT
+        if down:
+            if not self.was_down:
+                self.start = (x, y) if valid else None
+                self.reported = False
+                self.ignore_late_gesture = False
+            if valid:
+                self.last_point = (x, y)
+            self.was_down = True
+            if gesture and not self.reported:
+                self.reported = True
+                return gesture
             return None
-        x = ((data[1] & 15) << 8) | data[2]
-        y = ((data[3] & 15) << 8) | data[4]
-        return (x, y) if x < WIDTH and y < HEIGHT else None
+        if self.was_down:
+            self.was_down = False
+            self.ignore_late_gesture = True
+            if self.reported:
+                self.reported = False
+                return None
+            if gesture:
+                return gesture
+            if self.start is None or self.last_point is None:
+                return None
+            dx = self.last_point[0] - self.start[0]
+            dy = self.last_point[1] - self.start[1]
+            if abs(dx) >= 36 and abs(dx) > abs(dy) * 1.3:
+                return "swipe_left" if dx < 0 else "swipe_right"
+            if abs(dy) >= 36 and abs(dy) > abs(dx) * 1.3:
+                return "swipe_up" if dy < 0 else "swipe_down"
+            return "tap"
+        if gesture and not self.ignore_late_gesture:
+            self.ignore_late_gesture = True
+            return gesture
+        if not gesture:
+            self.ignore_late_gesture = False
+        return None
 
 
 class BatteryGauge:
@@ -226,6 +270,11 @@ class RoundScreen:
         self.battery = battery
         self.battery_state = None
         self.last_draw_at = 0
+        self.visible = True
+        self.brightness_setting = 65
+        self.animation_tick = 0
+        self.particles = []
+        self.info_frames = 0
 
     def choose(self, ident):
         if ident not in WORLD_IDS:
@@ -241,13 +290,34 @@ class RoundScreen:
         self.selected = WORLD_IDS[(WORLD_IDS.index(self.selected) + 1) % len(WORLD_IDS)]
         return self.selected
 
-    def poll_touch(self):
-        if self.touch is not None and self.touch.tapped() is not None:
-            return self.next_world()
+    def poll_touch(self, engine=None):
+        """Return an action describing the touch; engine remains single owner."""
+        if self.touch is None:
+            return None
+        event = self.touch.poll_event()
+        if event == "swipe_left":
+            return ("world", self.next_world())
+        if event == "swipe_right":
+            self.selected = WORLD_IDS[(WORLD_IDS.index(self.selected) - 1) % len(WORLD_IDS)]
+            return ("world", self.selected)
+        if event in ("swipe_up", "swipe_down") and self.selected == "aquarium":
+            direction = 1 if event == "swipe_up" else -1
+            target = WATER_AREAS[(WATER_AREAS.index(self.water_area) + direction) % len(WATER_AREAS)]
+            if (engine is not None and
+                engine.worlds["aquarium"]["water_areas"][target]["unlocked"]):
+                self.choose_water_area(target)
+                return ("area", target)
+            return None
+        if event in ("tap", "double_tap"):
+            return ("tap", self.selected)
+        if event == "long_press":
+            return ("info", self.selected)
         return None
 
     def show(self, minutes, force=False):
         """Draw once on mode/day changes or scheduled refresh; no frame buffer."""
+        if not self.visible:
+            return False
         ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
             if self.selected == "aquarium" else self.selected
         early_path = "assets/%s-young.dat" % ident
@@ -266,6 +336,9 @@ class RoundScreen:
                     self.driver.write_pixels(blend_row(a, b, alpha))
             finally:
                 self.driver.stop_pixels()
+        self.particles = []
+        self.info_frames = 0
+        self.last_draw_at = int(minutes)
         if self.battery is not None:
             self.battery_state = self.battery.status()
             if self.battery_state["low"]:
@@ -273,11 +346,120 @@ class RoundScreen:
                 self.driver.solid(97, 16, 43, 16, 0x18C3)
                 self.driver.solid(100, 19, 31, 10, 0xF800)
                 self.driver.solid(132, 22, 4, 4, 0xF800)
+            elif self.battery_state.get("charging") is True:
+                # The motif appears only when a real charge detector is fitted.
+                self.driver.solid(97, 16, 43, 16, 0x0427)
+                self.driver.solid(100, 19, 31, 10, 0x05E0)
+                self.driver.solid(132, 22, 4, 4, 0x05E0)
+        return True
+
+    def set_visible(self, enabled, minutes):
+        """Safe scheduled screen blanking without disabling Wi-Fi or USB.
+
+        Deep sleep uses a separate opt-in hardware path. The backlight can
+        always recover on a new trusted daytime clock sync.
+        """
+        enabled = bool(enabled)
+        if enabled == self.visible:
+            return False
+        if enabled:
+            self.visible = True
+            self.driver.set_brightness(self.brightness_setting)
+            self.show(minutes, force=True)
+        else:
+            # A short, reversible dusk transition before backlight-off.
+            for brightness in (40, 20, 8, 0):
+                self.driver.set_brightness(brightness)
+                getattr(time, "sleep_ms", lambda ms: time.sleep(ms / 1000))(35)
+            self.visible = False
+            self.particles = []
+        return True
+
+    def set_brightness(self, percent):
+        # Never allow a remotely persisted 0% backlight to hide the only UI.
+        if isinstance(percent, bool) or not isinstance(percent, int) or not 10 <= percent <= 100:
+            raise ValueError("Brightness must be 10..100 percent")
+        self.brightness_setting = percent
+        if self.visible:
+            self.driver.set_brightness(percent)
+
+    def _current_art_paths(self):
+        ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
+            if self.selected == "aquarium" else self.selected
+        return ("assets/%s-young.dat" % ident,
+                "assets/%s-mature.dat" % ident)
+
+    def _restore_patch(self, young, mature, rect, alpha):
+        x, y, size, _ = rect
+        self.driver.window(x, y, size, size)
+        self.driver.start_pixels()
+        try:
+            for line in range(size):
+                offset = ((y + line) * WIDTH + x) * 2
+                young.seek(offset)
+                mature.seek(offset)
+                self.driver.write_pixels(blend_row(young.read(size * 2),
+                                                   mature.read(size * 2), alpha))
+        finally:
+            self.driver.stop_pixels()
+
+    def animate(self, minutes):
+        """Animate four tiny sprites with patch restores, not full-frame redraws.
+
+        Motion is intentionally decorative: no changes to simulation state.
+        A few hundred SPI bytes per tick are much cheaper than a fresh frame.
+        """
+        if not self.visible:
+            return False
+        if self.info_frames:
+            self.info_frames -= 1
+            if not self.info_frames:
+                self.show(minutes, force=True)
+            return True
+        early_path, mature_path = self._current_art_paths()
+        if not (valid_frame(early_path) and valid_frame(mature_path)):
+            return False
+        alpha = min(255, max(0, int(minutes) * 255 // (30 * 1440)))
+        with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
+            for rect in self.particles:
+                self._restore_patch(early, mature, rect, alpha)
+        self.animation_tick += 1
+        watery = self.selected == "aquarium"
+        colour = (0xC7DF if watery else 0xFFDF if self.selected == "fantasy"
+                  else 0xF6A4 if self.selected == "forest" else 0xE7B1)
+        # Keep all 4×4 sprites away from circular screen corners.
+        self.particles = [
+            (72 + (i * 31) % 95,
+             65 + ((i * 43 - self.animation_tick * (4 if watery else 1)) % 125),
+             4, colour)
+            for i in range(4)
+        ]
+        for x, y, size, value in self.particles:
+            self.driver.solid(x, y, size, size, value)
+        return True
+
+    def show_info(self, minutes):
+        """Long-press displays a compact, approximate four-segment gauge."""
+        if not self.show(minutes, force=True):
+            return False
+        voltage = self.battery_state.get("voltage") if self.battery_state else None
+        bars = sum(voltage >= cutoff for cutoff in (3.5, 3.65, 3.85, 4.05)) \
+            if isinstance(voltage, (int, float)) else 0
+        self.driver.solid(65, 91, 110, 58, 0x18E3)
+        self.driver.solid(81, 103, 80, 35, 0xFFFF)
+        self.driver.solid(161, 113, 7, 16, 0xFFFF)
+        for i in range(4):
+            self.driver.solid(85 + i * 18, 107, 14, 27,
+                              0x05E0 if i < bars else 0x4208)
+        self.info_frames = 3
         return True
 
     def status(self):
         return {"selected": self.selected, "connected": True,
                 "water_area": self.water_area,
+                "screen_on": self.visible,
+                "brightness": self.brightness_setting,
+                "animation_tick": self.animation_tick,
                 "touch_connected": self.touch is not None,
                 "battery": self.battery_state or {"voltage": None, "low": False,
                                                  "charging": None,

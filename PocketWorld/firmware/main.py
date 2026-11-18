@@ -114,9 +114,10 @@ def serve_asset(client, path):
     serve_file(client, filename, mime)
 
 
-def save_display_selection(world, water_area="river"):
+def save_display_selection(world, water_area="river", brightness=65):
     with open(DISPLAY_SETTINGS_FILE + ".tmp", "w") as handle:
-        json.dump({"world": world, "water_area": water_area}, handle)
+        json.dump({"world": world, "water_area": water_area,
+                   "brightness": brightness}, handle)
     try:
         os.remove(DISPLAY_SETTINGS_FILE + ".bak")
     except OSError:
@@ -135,9 +136,23 @@ def load_display_selection(screen):
                 saved = json.load(handle)
             screen.choose(saved["world"])
             screen.choose_water_area(saved.get("water_area", "river"))
+            screen.set_brightness(saved.get("brightness", 65))
             return
         except (OSError, ValueError, KeyError, TypeError):
             pass
+
+
+def sync_screen_schedule(screen, power, engine):
+    """Apply office hours to the backlight even with deep-sleep disabled.
+
+    A missing/unsynced clock keeps the screen accessible for recovery.
+    Network/API stays alive so the Android app can change settings at night.
+    """
+    if screen is None or power is None:
+        return False
+    asleep = power.status()["mode"] == "sleep"
+    return screen.set_visible(not asleep,
+                              engine.worlds[screen.selected]["minutes"])
 
 
 def query_param(path, key):
@@ -235,7 +250,7 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.5", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.6", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):
@@ -252,6 +267,8 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
         return bool(changed)
     elif method == "GET" and path == "/api/power":
         data = power.status() if power is not None else PowerRuntime().status()
+        data["screen_blank_supported"] = screen is not None
+        data["screen_on"] = screen.visible if screen is not None else None
         response(client, "200 OK", "application/json", json.dumps(data))
     elif method == "GET" and path == "/api/motion":
         response(client, "200 OK", "application/json",
@@ -283,10 +300,29 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
             screen.choose(data["world"])
             if area is not None:
                 screen.choose_water_area(area)
-            save_display_selection(screen.selected, screen.water_area)
+            save_display_selection(screen.selected, screen.water_area,
+                                   screen.brightness_setting)
             screen.show(engine.worlds[screen.selected]["minutes"], force=True)
             response(client, "200 OK", "application/json", json.dumps(screen.status()))
         except (ValueError, OSError, TypeError) as exc:
+            response(client, "400 Bad Request", "application/json",
+                     json.dumps({"error": str(exc)}))
+    elif method == "POST" and path == "/api/display/brightness":
+        if not authorized(headers):
+            response(client, "403 Forbidden", "application/json", '{"error":"Invalid admin key"}')
+            return False
+        if screen is None:
+            response(client, "503 Service Unavailable", "application/json", '{"error":"Round LCD unavailable"}')
+            return False
+        try:
+            data = json_request(client, headers, body, maximum=90)
+            if len(data) != 1:
+                raise ValueError("brightness required")
+            screen.set_brightness(data["brightness"])
+            save_display_selection(screen.selected, screen.water_area,
+                                   screen.brightness_setting)
+            response(client, "200 OK", "application/json", json.dumps(screen.status()))
+        except (KeyError, ValueError, OSError, TypeError) as exc:
             response(client, "400 Bad Request", "application/json",
                      json.dumps({"error": str(exc)}))
     elif method == "POST" and path == "/api/motion/settings":
@@ -323,7 +359,11 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
                 power.update_schedule(payload["schedule"])
             power.sync_clock(stamp)
             changed = engine.reconcile_clock(stamp)
-            response(client, "200 OK", "application/json", json.dumps(power.status()))
+            sync_screen_schedule(screen, power, engine)
+            result = power.status()
+            result["screen_blank_supported"] = screen is not None
+            result["screen_on"] = screen.visible if screen is not None else None
+            response(client, "200 OK", "application/json", json.dumps(result))
             return bool(changed)
         except (ValueError, TypeError, KeyError, OSError) as exc:
             response(client, "400 Bad Request", "application/json", json.dumps({"error": str(exc)}))
@@ -407,6 +447,7 @@ def main():
             print("Microphone unavailable:", exc)
     if power.now() is not None:
         engine.reconcile_clock(power.now())
+    sync_screen_schedule(screen, power, engine)
     ap = None
     # Silent background wake: the weekend world grows while the LCD stays dark.
     if power.plan_sleep() is not None:
@@ -426,6 +467,8 @@ def main():
     motion_ms = 0
     touch_ms = 0
     screen_ms = 0
+    screen_schedule_ms = 0
+    animation_ms = 0
     mic_ms = 0
     mic_react_ms = 60000  # First confirmed sample can create one event.
     uptime_ms = 0
@@ -437,10 +480,18 @@ def main():
         motion_ms += delta
         touch_ms += delta
         screen_ms += delta
+        screen_schedule_ms += delta
+        animation_ms += delta
         mic_ms += delta
         mic_react_ms += delta
         uptime_ms += delta
         previous = now
+        if screen is not None and screen_schedule_ms >= 1000:
+            screen_schedule_ms %= 1000
+            try:
+                sync_screen_schedule(screen, power, engine)
+            except (OSError, ValueError, MemoryError) as exc:
+                print("Screen schedule update failed:", exc)
         if sensor is not None and motion_ms >= 100:
             motion_ms %= 100
             try:
@@ -452,10 +503,17 @@ def main():
         if screen is not None and touch_ms >= 160:
             touch_ms %= 160
             try:
-                ident = screen.poll_touch()
-                if ident is not None:
-                    save_display_selection(ident, screen.water_area)
-                    screen.show(engine.worlds[ident]["minutes"], force=True)
+                action = screen.poll_touch(engine)
+                if action is not None and action[0] in ("world", "area"):
+                    save_display_selection(screen.selected, screen.water_area,
+                                           screen.brightness_setting)
+                    screen.show(engine.worlds[screen.selected]["minutes"], force=True)
+                elif action is not None and action[0] == "tap":
+                    if engine.tap(screen.selected):
+                        save_worlds(engine)
+                        since_save = 0
+                elif action is not None and action[0] == "info":
+                    screen.show_info(engine.worlds[screen.selected]["minutes"])
             except (OSError, ValueError) as exc:
                 print("Touch read failed:", exc)
         if screen is not None and screen_ms >= 60000:
@@ -464,6 +522,12 @@ def main():
                 screen.show(engine.worlds[screen.selected]["minutes"])
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display refresh failed:", exc)
+        if screen is not None and animation_ms >= 1400:
+            animation_ms %= 1400
+            try:
+                screen.animate(engine.worlds[screen.selected]["minutes"])
+            except (OSError, ValueError, MemoryError) as exc:
+                print("Display animation failed:", exc)
         if microphone is not None and mic_ms >= 250:
             mic_ms %= 250
             try:

@@ -46,7 +46,7 @@
     .timebox{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-top:1px solid #334747;color:#ccd9cf;font-size:12px}
     .timebox:first-of-type{border-top:0}.timebox b{color:#f1f7ed;font-size:12px}
     .sound-description{color:#aec7b8;font-size:12px;line-height:1.7;margin:0 0 12px}
-    .events{margin:0;padding:0;list-style:none}.events li{padding:9px 0;border-top:1px solid #314343;color:#d8e7da;font-size:12px;line-height:1.6}.events li:first-child{border-top:0}
+    .events{margin:0;padding:0;list-style:none;max-height:330px;overflow:auto}.events li{padding:9px 0;border-top:1px solid #314343;color:#d8e7da;font-size:12px;line-height:1.6}.events li:first-child{border-top:0}
     .footer{margin-top:20px;font-size:11px;color:#839d93;line-height:1.7}
     #toast{position:fixed;bottom:30px;left:50%;transform:translate(-50%,10px);opacity:0;transition:.2s;background:#efffe9;color:#213c31;border-radius:14px;padding:11px 17px;max-width:min(350px,90vw);text-align:center;font-size:13px;box-shadow:0 8px 30px #0006;z-index:10;pointer-events:none}
     #toast.show{transform:translate(-50%,0);opacity:1}
@@ -84,7 +84,7 @@
       <section class="panel"><h3>観察ノート <span>FIELD NOTES</span></h3><div class="timebox"><span>経過時間</span><b id="elapsed">0分</b></div><div class="timebox"><span>現在の発展段階</span><b id="stage">誕生したばかり</b></div><div class="timebox"><span>更新</span><b id="sync">5秒ごと</b></div></section>
       <section class="panel"><h3>🎤 音で変わる世界 <span>SOUND REACTIONS</span></h3><p class="sound-description" id="sound-description">周囲の音で小さな世界が変化します。</p><div class="timebox"><span>マイクの状態</span><b id="sound-status">外付けマイク待ち</b></div><div class="timebox"><span>音のようす</span><b id="sound-level">未計測</b></div></section>
       <section class="panel"><h3>🌀 手の中の重力 <span>GYRO / MOTION</span></h3><p class="sound-description">サンニーを傾けると、世界が少しだけ重力に反応します。振るイベントは初期設定ではOFFです。</p><div class="timebox"><span>6軸センサー</span><b id="motion-status">実機接続待ち</b></div><div class="timebox"><span>傾き</span><b id="motion-tilt">未計測</b></div></section>
-      <section class="panel"><h3>最近のできごと <span>EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
+      <section class="panel"><h3>世界の発見ノート <span>24 LATEST EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
     </div>
   </div>
   <p class="footer">ESP32に接続中は本体で保存した世界を観察します。川・海・深海の風景は独立したイラストで、誕生から30日かけて少しずつ姿を変えます。デモでは3エリアを自由にプレビューできます。実機の水槽は川から始まり、海は1日後、深海は3日後に自動解放されます。世界は60秒ごとに成長します。</p>
@@ -413,7 +413,8 @@
     $("device-select").textContent=isWater?"この水槽をサンニーに表示":"この世界をサンニーに表示";
     const battery=displayState.battery;
     $("device-status").textContent=!live?"デモ鑑賞中":!displayState.connected?"丸形画面の接続を確認中":
-      "本体の画面："+(displayState.selected==="aquarium"?
+      (displayState.screen_on===false?"🌙 本体の画面は勤務時間外のためOFF ・ ":"本体の画面：")+
+      (displayState.selected==="aquarium"?
         (waterNames[displayState.water_area]||"水槽"):(defaults[displayState.selected]?.name||"確認中"))+
       (battery&&typeof battery.voltage==="number"?" ・ 電池 "+battery.voltage.toFixed(2)+"V"+(battery.low?" ⚠ 充電残量に注意":""):"");
     $("world-title").textContent=isWater?waterNames[waterArea]:w.name;
@@ -437,7 +438,13 @@
     $("sound-level").textContent=audioState.connected?({quiet:"静か",active:"活動中",loud:"にぎやか"}[audioState.band]||"計測中")+" ・ "+audioState.level+"/100":"未計測";
     $("motion-status").textContent=motionState.connected?"傾きに反応中":"実機接続待ち";
     $("motion-tilt").textContent=motionState.connected?"横 "+Math.round(motionState.tilt_x*100)+"% / 縦 "+Math.round(motionState.tilt_y*100)+"%":"未計測";
-    const list=(w.events||[]).slice(-4).reverse();$("events").replaceChildren(...(list.length?list:["この世界が誕生しました"]).map(msg=>{const li=document.createElement("li");li.textContent=msg;return li;}));
+    const journal=Array.isArray(w.journal)?w.journal:[];
+    const list=journal.length?journal.slice(-24).reverse().map(e=>
+      "DAY "+(Math.floor((e.minute||0)/1440)+1)+" ・ "+e.message):
+      (w.events||[]).slice(-5).reverse();
+    $("events").replaceChildren(...(list.length?list:["この世界が誕生しました"]).map(msg=>{
+      const li=document.createElement("li");li.textContent=msg;return li;
+    }));
   }
   function setWorld(id){if(!worlds.includes(id))return;selected=id;document.querySelectorAll('.tab').forEach(el=>{const active=el.dataset.world===id;el.classList.toggle('active',active);el.setAttribute('aria-pressed',active);});render();}
   function setWaterArea(area){if(!waterAreas.includes(area))return;const currentArea=(getWorld().water_areas||{})[area];if(!currentArea||!currentArea.unlocked)return;waterArea=area;render();}
@@ -473,7 +480,8 @@
       if(selected==="aquarium")selection.area=waterArea;
       const response=await fetch("/api/display/select",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(selection)});
       if(!response.ok)throw Error("本体に送れませんでした");
-      showToast("☀ サンニーに"+(selected==="aquarium"?waterNames[waterArea]:defaults[selected].name)+"を表示しました");
+      showToast((displayState.screen_on===false?"🌙 起床時に表示する世界を設定：":"☀ サンニーに表示：")+
+        (selected==="aquarium"?waterNames[waterArea]:defaults[selected].name));
       await fetchState();
     }catch(err){showToast("画面切替に失敗しました。通信を確認してね");}
   });

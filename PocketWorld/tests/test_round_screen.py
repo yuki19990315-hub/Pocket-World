@@ -62,13 +62,13 @@ class Machine:
 
 class I2C:
     def __init__(self):
-        self.value = b"\x01\x00\x64\x00\x78"
+        self.value = b"\x00\x01\x00\x64\x00\x78"
 
     def scan(self):
         return [0x15, 0x6b]
 
     def readfrom_mem(self, addr, register, size):
-        assert (addr, register, size) == (0x15, 0x02, 5)
+        assert (addr, register, size) == (0x15, 0x01, 6)
         return self.value
 
 
@@ -94,6 +94,9 @@ class Display:
     def solid(self, *args):
         self.calls.append(("solid", args))
 
+    def set_brightness(self, percent):
+        self.calls.append(("brightness", percent))
+
 
 class RoundScreenTest(unittest.TestCase):
     def test_alpha_and_validation(self):
@@ -118,15 +121,46 @@ class RoundScreenTest(unittest.TestCase):
         lcd.solid(20, 20, 3, 2, 0xf800)
         self.assertIn(b"\xf8\x00" * 3, lcd.spi.writes)
 
-    def test_touch_single_press_only(self):
+    def test_touch_distinguishes_tap_swipe_and_chip_gestures(self):
         bus = I2C()
         touch = CST816Touch(bus)
-        self.assertEqual(touch.tapped(), (100, 120))
-        self.assertIsNone(touch.tapped())
-        bus.value = b"\x00\x00\x00\x00\x00"
-        self.assertIsNone(touch.tapped())
-        bus.value = b"\x01\x00\x40\x00\x50"
-        self.assertEqual(touch.tapped(), (64, 80))
+        self.assertIsNone(touch.poll_event())
+        self.assertIsNone(touch.poll_event())
+        bus.value = b"\x00\x00\x00\x00\x00\x00"
+        self.assertEqual(touch.poll_event(), "tap")
+        self.assertIsNone(touch.poll_event())
+        bus.value = b"\x00\x01\x00\x32\x00\x50"
+        self.assertIsNone(touch.poll_event())
+        bus.value = b"\x00\x01\x00\xb4\x00\x50"
+        self.assertIsNone(touch.poll_event())
+        bus.value = b"\x00\x00\x00\x00\x00\x00"
+        self.assertEqual(touch.poll_event(), "swipe_right")
+        bus.value = b"\x0c\x01\x00\x40\x00\x50"
+        self.assertEqual(touch.poll_event(), "long_press")
+        bus.value = b"\x00\x00\x00\x00\x00\x00"
+        self.assertIsNone(touch.poll_event())
+
+    def test_swipes_switch_world_and_only_unlocked_water_areas(self):
+        class Touch:
+            def __init__(self):
+                self.events = iter(("swipe_left", "swipe_right", "swipe_up",
+                                    "swipe_up", "tap", "long_press"))
+            def poll_event(self):
+                return next(self.events)
+        screen = RoundScreen(Display())
+        screen.touch = Touch()
+        self.assertEqual(screen.poll_touch(), ("world", "city"))
+        self.assertEqual(screen.poll_touch(), ("world", "nature"))
+        screen.choose("aquarium")
+        class Engine:
+            worlds = {"aquarium": {"water_areas": {
+                "river":{"unlocked":True},"ocean":{"unlocked":False},
+                "deepsea":{"unlocked":True}}}}
+        self.assertIsNone(screen.poll_touch(Engine()))
+        Engine.worlds["aquarium"]["water_areas"]["ocean"]["unlocked"] = True
+        self.assertEqual(screen.poll_touch(Engine()), ("area", "ocean"))
+        self.assertEqual(screen.poll_touch(), ("tap", "aquarium"))
+        self.assertEqual(screen.poll_touch(), ("info", "aquarium"))
 
     def test_battery_divider_not_fake_charging(self):
         status = BatteryGauge(Machine).status()
@@ -146,6 +180,10 @@ class RoundScreenTest(unittest.TestCase):
                     f.write(b"\x07\xe0" * (FRAME_SIZE // 2))
                 device = Display()
                 screen = RoundScreen(device, battery=BatteryGauge(Machine))
+                screen.set_brightness(32)
+                self.assertEqual(screen.status()["brightness"], 32)
+                with self.assertRaises(ValueError):
+                    screen.set_brightness(0)
                 screen.choose("city")
                 self.assertTrue(screen.show(1440 * 15))
                 self.assertEqual(device.rows, 240)
@@ -163,10 +201,46 @@ class RoundScreenTest(unittest.TestCase):
                 screen.choose_water_area("river")
                 self.assertTrue(screen.show(0))
                 self.assertEqual(screen.status()["water_area"], "river")
+                before = device.rows
+                self.assertTrue(screen.animate(120))
+                self.assertEqual(screen.status()["animation_tick"], 1)
+                self.assertEqual(len(screen.particles), 4)
+                self.assertTrue(screen.animate(120))
+                self.assertEqual(screen.status()["animation_tick"], 2)
+                self.assertGreater(device.rows, before)
+                self.assertTrue(screen.set_visible(False, 120))
+                self.assertFalse(screen.status()["screen_on"])
+                self.assertFalse(screen.animate(120))
+                self.assertFalse(screen.show(120))
+                self.assertTrue(screen.set_visible(True, 120))
+                self.assertTrue(screen.status()["screen_on"])
+                self.assertTrue(screen.show_info(120))
+                self.assertEqual(screen.info_frames, 3)
+                for _ in range(3):
+                    self.assertTrue(screen.animate(120))
+                self.assertEqual(screen.info_frames, 0)
                 screen.choose_water_area("deepsea")
                 self.assertFalse(screen.show(0))
                 with self.assertRaises(ValueError):
                     screen.choose_water_area("ocean/../../settings")
+            finally:
+                os.chdir(previous)
+
+    def test_charging_motif_only_when_status_is_truly_detected(self):
+        class Charging:
+            def status(self):
+                return {"voltage": 3.92, "low": False, "charging": True}
+        previous = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                os.mkdir("assets")
+                for stage in ("young", "mature"):
+                    with open("assets/nature-" + stage + ".dat", "wb") as f:
+                        f.write(b"\x07\xe0" * (FRAME_SIZE // 2))
+                driver = Display()
+                self.assertTrue(RoundScreen(driver, battery=Charging()).show(0))
+                self.assertIn(("solid", (100, 19, 31, 10, 0x05E0)), driver.calls)
             finally:
                 os.chdir(previous)
 

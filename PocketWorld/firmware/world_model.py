@@ -18,16 +18,34 @@ WEATHERS = ("sunny", "sunny", "cloudy", "rain", "windy")
 WATER_AREAS = ("river", "ocean", "deepsea")
 WATER_UNLOCK_MINUTES = {"ocean": 1440, "deepsea": 4320}
 FOREST_SEASONS = ("spring", "summer", "autumn", "winter")
-MAX_OFFLINE_SECONDS = 48 * 3600
+# A long weekend (Fri evening -> Tue morning) must not truncate growth.
+# Still cap untrusted phone-clock recovery to a week per boot.
+MAX_OFFLINE_SECONDS = 7 * 24 * 3600
 TICK_SECONDS = 60
 # Sound levels are normalized values from 0 to 100, not raw microphone samples.
 # The optional microphone adapter should call observe_sound() once per minute.
 SOUND_QUIET_MAX = 24
 SOUND_LOUD_MIN = 70
+MATURITY_MINUTES = 30 * 1440
+# A first-session discovery happens quickly; later changes stay interesting
+# over weeks, in step with the 30-day illustrated maturation timeline.
+HOUSE_MILESTONES = (180, 720, 1440, 2880, 4320, 5760, 8640, 10080,
+                    14400, 20160, 28800, 36000, MATURITY_MINUTES)
+MAX_JOURNAL = 24
 
 
 def _clamp(value, bottom=0, top=100):
     return max(bottom, min(top, value))
+
+
+def _growth_due(minute, early_step, mature_step, early_until=180, begins=0):
+    """Allow early discoveries, then gradually paced background progress."""
+    elapsed = minute - begins
+    if elapsed <= 0:
+        return False
+    if elapsed <= early_until:
+        return minute % early_step == 0
+    return minute % mature_step == 0
 
 
 def _starting_water_area(ident):
@@ -42,7 +60,7 @@ def _starting_water_area(ident):
 
 
 class PocketWorld:
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self, restored=None):
         restored = restored if isinstance(restored, dict) else {}
@@ -72,6 +90,11 @@ class PocketWorld:
                 "season": old.get("season", "spring"),
                 "weather": old.get("weather", "sunny"),
                 "events": list(old.get("events", []))[-5:],
+                "journal": [dict(item) for item in
+                            (old.get("journal", []) if isinstance(old.get("journal", []), list) else [])
+                            if isinstance(item, dict) and
+                            isinstance(item.get("minute"), int) and
+                            isinstance(item.get("message"), str)][-MAX_JOURNAL:],
             }
             if ident == "aquarium":
                 saved_areas = old.get("water_areas", {})
@@ -126,7 +149,7 @@ class PocketWorld:
         """Recover downtime from the phone clock once per boot.
 
         Already simulated uptime is subtracted to avoid counting time twice.
-        The timestamp is not trusted beyond 48 hours of catch-up.
+        The timestamp is not trusted beyond one week of catch-up.
         """
         try:
             unix_seconds = int(unix_seconds)
@@ -150,6 +173,8 @@ class PocketWorld:
     def _event(self, world, message):
         world["events"].append(message)
         world["events"] = world["events"][-5:]
+        world["journal"].append({"minute": world["minutes"], "message": message})
+        world["journal"] = world["journal"][-MAX_JOURNAL:]
 
     @staticmethod
     def _sync_aquarium(world):
@@ -158,15 +183,15 @@ class PocketWorld:
         world["wildlife"] = sum(area["fish"] + area["shrimp"] for area in active)
 
     def _step_forest(self, world, n):
-        if n % 24 == 0:
+        if _growth_due(n, 24, 720):
             world["plants"] = min(85, world["plants"] + 1)
-        if n % 97 == 0:
+        if _growth_due(n, 97, 2880):
             world["wildlife"] = min(25, world["wildlife"] + 1)
-        if n % 180 == 0:
+        if _growth_due(n, 180, 1440):
             world["tree_age"] = min(1000, world["tree_age"] + 1)
-        if world["weather"] == "rain" and n % 45 == 0:
+        if world["weather"] == "rain" and _growth_due(n, 45, 1440):
             world["mushrooms"] = min(25, world["mushrooms"] + 1)
-        if n % 360 == 0:
+        if _growth_due(n, 360, 2880, early_until=720):
             world["fireflies"] = min(18, world["fireflies"] + 1)
             self._event(world, "日が暮れて、ホタルが光り始めました")
         season = FOREST_SEASONS[(n // (3 * 1440)) % len(FOREST_SEASONS)]
@@ -182,28 +207,32 @@ class PocketWorld:
                 self._event(world, "新しい水域「%s」が解放されました" %
                             ("海" if area_id == "ocean" else "深海"))
         river = areas["river"]
-        if n % 45 == 0:
+        if _growth_due(n, 45, 1440):
             river["plants"] = min(35, river["plants"] + 1)
-        if n % 190 == 0:
+        if _growth_due(n, 190, 2880, early_until=380):
             river["fish"] = min(18, river["fish"] + 1)
-        if n % 245 == 0:
+        if _growth_due(n, 245, 4320, early_until=490):
             river["shrimp"] = min(12, river["shrimp"] + 1)
         ocean = areas["ocean"]
         if ocean["unlocked"]:
-            if n % 100 == 0:
+            if _growth_due(n, 100, 1440, early_until=350,
+                           begins=WATER_UNLOCK_MINUTES["ocean"]):
                 ocean["coral"] = min(24, ocean["coral"] + 1)
-            if n % 220 == 0:
+            if _growth_due(n, 220, 2880, early_until=500,
+                           begins=WATER_UNLOCK_MINUTES["ocean"]):
                 ocean["fish"] = min(20, ocean["fish"] + 1)
-            if n % 1080 == 0:
+            if n % 10080 == 0:
                 ocean["visitors"] = min(5, ocean["visitors"] + 1)
                 self._event(world, "海にウミガメが遊びに来ました")
         deep = areas["deepsea"]
         if deep["unlocked"]:
-            if n % 170 == 0:
+            if _growth_due(n, 170, 1440, early_until=350,
+                           begins=WATER_UNLOCK_MINUTES["deepsea"]):
                 deep["glow"] = min(22, deep["glow"] + 1)
-            if n % 310 == 0:
+            if _growth_due(n, 310, 2880, early_until=620,
+                           begins=WATER_UNLOCK_MINUTES["deepsea"]):
                 deep["fish"] = min(16, deep["fish"] + 1)
-            if n % 1500 == 0:
+            if n % 14400 == 0:
                 deep["visitors"] = min(4, deep["visitors"] + 1)
                 self._event(world, "深海に見たことのない生き物が現れました")
         self._sync_aquarium(world)
@@ -223,20 +252,20 @@ class PocketWorld:
             self._step_forest(world, n)
             return
 
-        if ident in ("nature", "hybrid", "fantasy") and n % 9 == 0:
+        if ident in ("nature", "hybrid", "fantasy") and _growth_due(n, 9, 720):
             world["plants"] = _clamp(world["plants"] + 1, 0, 85)
-        if ident == "city" and n % 45 == 0:
+        if ident == "city" and _growth_due(n, 45, 1440):
             world["plants"] = _clamp(world["plants"] + 1, 0, 28)
-        if ident in ("nature", "hybrid", "fantasy") and n % 47 == 0:
+        if ident in ("nature", "hybrid", "fantasy") and _growth_due(n, 47, 2880):
             world["wildlife"] = min(25, world["wildlife"] + 1)
-        if ident in ("city", "hybrid", "fantasy") and n % 70 == 0:
+        if ident in ("city", "hybrid", "fantasy") and _growth_due(n, 70, 1440):
             world["residents"] = min(40, world["residents"] + 1)
-        if ident in ("city", "hybrid", "fantasy") and n % 140 == 0:
+        if ident in ("city", "hybrid", "fantasy") and n in HOUSE_MILESTONES:
             world["houses"] = min(16, world["houses"] + 1)
             self._event(world, "新しい建物が完成しました")
-        if ident == "hybrid" and n % 110 == 0:
+        if ident == "hybrid" and _growth_due(n, 110, 4320):
             self._event(world, "森と街をつなぐ道ができました")
-        if ident == "fantasy" and n % 55 == 0:
+        if ident == "fantasy" and _growth_due(n, 55, 720):
             world["magic"] = min(80, world["magic"] + 1)
         if n % 90 == 0:
             world["weather"] = WEATHERS[roll % len(WEATHERS)]
@@ -248,6 +277,8 @@ class PocketWorld:
                 "fantasy": "夜空に魔法の流れ星が現れました",
             }
             self._event(world, labels[ident])
+        if n == MATURITY_MINUTES:
+            self._event(world, "30日を迎え、小さな世界が成熟しました")
 
     def tap(self, ident):
         world = self.worlds.get(ident)
@@ -348,6 +379,7 @@ class PocketWorld:
             # Copy each world; API users must not mutate internal state.
             data = {key: (value[:] if isinstance(value, list) else value)
                     for key, value in world.items() if key != "water_areas"}
+            data["journal"] = [dict(item) for item in world["journal"]]
             if "water_areas" in world:
                 data["water_areas"] = {key: dict(value)
                                        for key, value in world["water_areas"].items()}
