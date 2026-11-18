@@ -113,6 +113,23 @@ class TestPowerProtocol(unittest.TestCase):
         main.service(get, self.engine, self.power, motion)
         self.assertTrue(response_body(get)["shake_enabled"])
 
+    def test_microphone_api_exposes_only_normalized_levels(self):
+        disconnected = invoke("GET", "/api/mic")
+        main.service(disconnected, self.engine, self.power)
+        self.assertEqual(response_body(disconnected), {
+            "connected": False, "level": None, "band": None})
+
+        class FakeMic:
+            def status(self):
+                return {"connected": True, "level": 55, "band": "active"}
+
+        connected = invoke("GET", "/api/state")
+        main.service(connected, self.engine, self.power, microphone=FakeMic())
+        data = response_body(connected)
+        self.assertEqual(data["audio"], {
+            "connected": True, "level": 55, "band": "active"})
+        self.assertNotIn("samples", data["audio"])
+
 
 if __name__ == "__main__":
     unittest.main()

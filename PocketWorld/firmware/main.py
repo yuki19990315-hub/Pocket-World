@@ -174,7 +174,7 @@ def save_motion_settings(enabled):
     os.rename(MOTION_SETTINGS_FILE + ".tmp", MOTION_SETTINGS_FILE)
 
 
-def service(client, engine, power=None, motion=None):
+def service(client, engine, power=None, motion=None, microphone=None):
     client.settimeout(7)
     try:
         method, path, headers, body = parse_request(client)
@@ -195,6 +195,8 @@ def service(client, engine, power=None, motion=None):
         snapshot = engine.snapshot()
         snapshot["motion"] = motion.snapshot() if motion is not None else {
             "connected": False, "tilt_x": 0, "tilt_y": 0, "shake_id": 0}
+        if microphone is not None:
+            snapshot["audio"] = microphone.status()
         response(client, "200 OK", "application/json; charset=utf-8", json.dumps(snapshot))
         return bool(changed)
     elif method == "GET" and path == "/api/power":
@@ -203,6 +205,10 @@ def service(client, engine, power=None, motion=None):
     elif method == "GET" and path == "/api/motion":
         response(client, "200 OK", "application/json",
                  json.dumps(motion.snapshot() if motion is not None else {"connected": False}))
+    elif method == "GET" and path == "/api/mic":
+        response(client, "200 OK", "application/json",
+                 json.dumps(microphone.status() if microphone is not None else {
+                     "connected": False, "level": None, "band": None}))
     elif method == "POST" and path == "/api/motion/settings":
         if not authorized(headers):
             response(client, "403 Forbidden", "application/json", '{"error":"Invalid admin key"}')
@@ -278,6 +284,7 @@ def main():
     motion = MotionEffects()
     load_motion_settings(motion)
     sensor = None
+    microphone = None
     try:
         import machine
         power.restore_timer_wake(machine.reset_cause() == machine.DEEPSLEEP_RESET)
@@ -287,12 +294,22 @@ def main():
             sensor = QMI8658(bus)
     except (ImportError, OSError, ValueError, AttributeError) as exc:
         print("Motion sensor unavailable:", exc)
+    if getattr(settings, "ENABLE_MICROPHONE", False):
+        try:
+            from inmp441 import INMP441
+            microphone = INMP441(sck_pin=settings.MIC_SCK_PIN,
+                                ws_pin=settings.MIC_WS_PIN,
+                                sd_pin=settings.MIC_SD_PIN,
+                                slot=settings.MIC_SLOT)
+            print("INMP441 I2S input opened (wiring is not auto-detected)")
+        except (ImportError, OSError, ValueError, AttributeError) as exc:
+            print("Microphone unavailable:", exc)
     if power.now() is not None:
         engine.reconcile_clock(power.now())
     ap = None
     # Silent background wake: the weekend world grows while the LCD stays dark.
     if power.plan_sleep() is not None:
-        enter_sleep(engine, power, sensor, ap)
+        enter_sleep(engine, power, sensor, ap, microphone)
     ap = configure_wifi()
     address = socket.getaddrinfo("0.0.0.0", settings.PORT)[0][-1]
     server = socket.socket()
@@ -306,6 +323,8 @@ def main():
     elapsed_ms = 0
     since_save = 0
     motion_ms = 0
+    mic_ms = 0
+    mic_react_ms = 60000  # First confirmed sample can create one event.
     uptime_ms = 0
     while True:
         now = time.ticks_ms()
@@ -313,6 +332,8 @@ def main():
         elapsed_ms += delta
         power.tick(delta)
         motion_ms += delta
+        mic_ms += delta
+        mic_react_ms += delta
         uptime_ms += delta
         previous = now
         if sensor is not None and motion_ms >= 100:
@@ -323,6 +344,21 @@ def main():
             except OSError as exc:
                 print("Motion read failed, disabling sensor:", exc)
                 sensor = None
+        if microphone is not None and mic_ms >= 250:
+            mic_ms %= 250
+            try:
+                sample = microphone.poll()
+                if sample is not None and mic_react_ms >= 60000:
+                    level = microphone.take_average()
+                    if level is not None and engine.observe_sound(level):
+                        save_worlds(engine)
+                        since_save = 0
+                    mic_react_ms %= 60000
+            except (OSError, ValueError) as exc:
+                print("Microphone read failed, disabling I2S:", exc)
+                microphone.deinit()
+                microphone = None
+                engine.disconnect_sound()
         if elapsed_ms >= 1000:
             seconds = elapsed_ms // 1000
             elapsed_ms %= 1000
@@ -332,14 +368,14 @@ def main():
             save_worlds(engine)
             since_save = 0
         if power.plan_sleep() is not None:
-            enter_sleep(engine, power, sensor, ap)
+            enter_sleep(engine, power, sensor, ap, microphone)
         try:
             client, _ = server.accept()
         except OSError:
             continue
         result = False
         try:
-            result = service(client, engine, power, motion)
+            result = service(client, engine, power, motion, microphone)
             if result is True:
                 save_worlds(engine)
                 since_save = 0
@@ -355,7 +391,7 @@ def main():
             machine.reset()
 
 
-def enter_sleep(engine, power, sensor, ap):
+def enter_sleep(engine, power, sensor, ap, microphone=None):
     """Optional path; only reachable after hardware sleep is explicitly enabled."""
     seconds = power.plan_sleep()
     if seconds is None:
@@ -367,6 +403,8 @@ def enter_sleep(engine, power, sensor, ap):
     power.write_wake_marker(power.now() + seconds)
     if sensor is not None:
         sensor.standby()
+    if microphone is not None:
+        microphone.deinit()
     if ap is not None:
         ap.active(False)
     import machine

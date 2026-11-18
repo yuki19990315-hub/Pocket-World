@@ -22,3 +22,13 @@ ENABLE_DEEP_SLEEP = False
 
 # Read the on-board QMI8658 on GPIO6 SDA / GPIO7 SCL where available.
 ENABLE_MOTION_SENSOR = True
+
+# External INMP441 6-pin I2S microphone. Leave False until the mic is wired and
+# the PCB's exposed pins have been verified against the actual board revision.
+# GPIO15/16/17 are candidates from the Waveshare Rev3 schematic, not a physical
+# wiring confirmation. L/R should be tied to GND for the left I2S channel.
+ENABLE_MICROPHONE = False
+MIC_SCK_PIN = 15
+MIC_WS_PIN = 16
+MIC_SD_PIN = 17
+MIC_SLOT = 0

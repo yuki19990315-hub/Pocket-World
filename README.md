@@ -4,7 +4,7 @@ Waveshare ESP32-S3-Touch-LCD-1.28（愛称 **サンニー**）とAndroidスマ�
 
 ## プロジェクト構成
 
-- **[PocketWorld/](PocketWorld/README.md)** — ESP32-S3用のMicroPythonコード、6世界シミュレーション、音量反応、スマホ用Web画面、無線更新API、v0.4の祝日スケジューラと6軸モーション読み取り（後者は実機未検証）
+- **[PocketWorld/](PocketWorld/README.md)** — ESP32-S3用のMicroPythonコード、6世界シミュレーション、スマホ用Web画面、無線更新API、祝日スケジューラ・6軸モーション・INMP441 I2Sマイクの音量反応（外付けマイクは実機接続前のため初期OFF）
 - **[SannyCompanionAndroid/](SannyCompanionAndroid/README.md)** — Android専用アプリ「サンニー Companion」。大画面観察、無線更新、v0.4では生活時間と振る演出を本体に保存
 - **[生活時間・電池・外装の設計](PocketWorld/docs/LIFE_CYCLE_POWER_ENCLOSURE.md)** — 日中常時点灯、土日祝日を含む夜間休眠、朝の自動起床、スマホ設定、充電演出、裏蓋からのBOOT/RESET復旧の設計（**時刻・休日判定は試作済み、ハードウェア連動は未実装**）
 - **[操作・表示・通信の統合設計](PocketWorld/docs/INTERACTION_SYSTEM_DESIGN.md)** — 本体のタッチ操作、スマホと本体の別画面、6世界の切替、ジャイロ演出、API、マイク・電源機能の接続方針（**設計のみ**）

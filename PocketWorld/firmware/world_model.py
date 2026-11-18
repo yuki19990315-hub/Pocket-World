@@ -272,9 +272,8 @@ class PocketWorld:
     def observe_sound(self, level):
         """React to ONE normalized sound-level sample (0..100) for all worlds.
 
-        The hardware-specific adapter is intentionally NOT included until the
-        user's external six-pin microphone model and wiring are confirmed.
-        Call at most once per minute, to avoid unnaturally fast development.
+        The optional INMP441 adapter feeds this no more than once per minute,
+        to avoid unnaturally fast development. It is disabled until wired.
         This method processes a volume number only, never speech or PCM audio.
         """
         if isinstance(level, bool):
