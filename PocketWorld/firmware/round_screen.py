@@ -275,6 +275,8 @@ class RoundScreen:
         self.animation_tick = 0
         self.particles = []
         self.info_frames = 0
+        self.shake_last_id = None
+        self.shake_frames = 0
 
     def choose(self, ident):
         if ident not in WORLD_IDS:
@@ -403,7 +405,7 @@ class RoundScreen:
         finally:
             self.driver.stop_pixels()
 
-    def animate(self, minutes):
+    def animate(self, minutes, motion=None):
         """Animate four tiny sprites with patch restores, not full-frame redraws.
 
         Motion is intentionally decorative: no changes to simulation state.
@@ -424,13 +426,27 @@ class RoundScreen:
             for rect in self.particles:
                 self._restore_patch(early, mature, rect, alpha)
         self.animation_tick += 1
+        tilt_x, tilt_y = 0, 0
+        if motion is not None:
+            effect = motion.snapshot()
+            if effect.get("connected"):
+                tilt_x = int(max(-1, min(1, effect.get("tilt_x", 0))) * 8)
+                tilt_y = int(max(-1, min(1, effect.get("tilt_y", 0))) * 8)
+                shake_id = effect.get("shake_id", 0)
+                if (effect.get("shake_enabled") and self.shake_last_id is not None
+                    and shake_id > self.shake_last_id):
+                    self.shake_frames = 4
+                self.shake_last_id = shake_id
         watery = self.selected == "aquarium"
         colour = (0xC7DF if watery else 0xFFDF if self.selected == "fantasy"
                   else 0xF6A4 if self.selected == "forest" else 0xE7B1)
+        if self.shake_frames:
+            colour = 0xFFFF
+            self.shake_frames -= 1
         # Keep all 4×4 sprites away from circular screen corners.
         self.particles = [
-            (72 + (i * 31) % 95,
-             65 + ((i * 43 - self.animation_tick * (4 if watery else 1)) % 125),
+            (72 + (i * 31) % 95 + tilt_x,
+             65 + ((i * 43 - self.animation_tick * (4 if watery else 1)) % 125) + tilt_y,
              4, colour)
             for i in range(4)
         ]

@@ -208,6 +208,18 @@ class RoundScreenTest(unittest.TestCase):
                 self.assertTrue(screen.animate(120))
                 self.assertEqual(screen.status()["animation_tick"], 2)
                 self.assertGreater(device.rows, before)
+                class Motion:
+                    shake_id = 0
+                    def snapshot(self):
+                        return {"connected": True, "tilt_x": 0.75,
+                                "tilt_y": -0.5, "shake_enabled": True,
+                                "shake_id": self.shake_id}
+                motion = Motion()
+                self.assertTrue(screen.animate(120, motion))
+                self.assertEqual(screen.particles[0][0], 78)
+                motion.shake_id = 1
+                self.assertTrue(screen.animate(120, motion))
+                self.assertEqual(screen.particles[0][3], 0xFFFF)
                 self.assertTrue(screen.set_visible(False, 120))
                 self.assertFalse(screen.status()["screen_on"])
                 self.assertFalse(screen.animate(120))

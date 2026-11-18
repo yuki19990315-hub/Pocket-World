@@ -525,7 +525,7 @@ def main():
         if screen is not None and animation_ms >= 1400:
             animation_ms %= 1400
             try:
-                screen.animate(engine.worlds[screen.selected]["minutes"])
+                screen.animate(engine.worlds[screen.selected]["minutes"], motion)
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display animation failed:", exc)
         if microphone is not None and mic_ms >= 250:
