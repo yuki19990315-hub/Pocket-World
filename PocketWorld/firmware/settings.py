@@ -23,6 +23,9 @@ ENABLE_DEEP_SLEEP = False
 # Read the on-board QMI8658 on GPIO6 SDA / GPIO7 SCL where available.
 ENABLE_MOTION_SENSOR = True
 
+# Enable after comparing GPIO1 readings against a connected cell and meter.
+ENABLE_BATTERY_MONITOR = False
+
 # External INMP441 6-pin I2S microphone. Leave False until the mic is wired and
 # the PCB's exposed pins have been verified against the actual board revision.
 # GPIO15/16/17 are candidates from the Waveshare Rev3 schematic, not a physical

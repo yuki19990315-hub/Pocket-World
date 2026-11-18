@@ -1,9 +1,4 @@
-"""MicroPython HTTP endpoint for Pocket World + Sanny Companion v0.4.
-
-Upload main.py, safe_update.py, world_model.py, settings.py and /index.html
-to the board's root filesystem. This first prototype provides the shared world
-engine and the phone viewer; round LCD rendering requires a matching GC9A01 driver.
-"""
+"""Pocket World's shared simulation, round display and Sanny Companion API."""
 
 import gc
 import json
@@ -55,7 +50,8 @@ def configure_wifi():
     import network
     ap = network.WLAN(network.AP_IF)
     ap.active(True)
-    ap.config(essid=settings.AP_SSID, password=settings.AP_PASSWORD)
+    # ESP32 WLAN.config security mode 3 is WPA2-PSK.
+    ap.config(essid=settings.AP_SSID, password=settings.AP_PASSWORD, security=3)
     print("Phone AP:", settings.AP_SSID, "address:", ap.ifconfig()[0])
 
     if settings.STA_SSID:
@@ -285,15 +281,42 @@ def main():
     load_motion_settings(motion)
     sensor = None
     microphone = None
+    lcd = None
+    touch = None
+    battery = None
+    battery_low = False
+    bus = None
+    import machine
     try:
-        import machine
+        from world_display import WorldDisplay
+        lcd = WorldDisplay()
+        lcd.render(engine, motion, 0)
+        print("LCD first frame:", lcd.world_id)
+    except (ImportError, OSError, ValueError, MemoryError) as exc:
+        print("LCD unavailable:", exc)
+        lcd = None
+    try:
         power.restore_timer_wake(machine.reset_cause() == machine.DEEPSLEEP_RESET)
+        bus = machine.I2C(0, sda=machine.Pin(6), scl=machine.Pin(7), freq=100000)
         if getattr(settings, "ENABLE_MOTION_SENSOR", True):
             from qmi8658 import QMI8658
-            bus = machine.I2C(0, sda=machine.Pin(6), scl=machine.Pin(7), freq=400000)
             sensor = QMI8658(bus)
+            print("QMI8658 ready:", hex(sensor.address))
     except (ImportError, OSError, ValueError, AttributeError) as exc:
         print("Motion sensor unavailable:", exc)
+    if lcd is not None:
+        try:
+            from cst816s import CST816S
+            touch = CST816S(bus) if bus is not None else None
+            if touch is not None:
+                print("Touch ready:", hex(touch.chip_id))
+        except (ImportError, OSError, ValueError) as exc:
+            print("Touch unavailable:", exc)
+        if getattr(settings, "ENABLE_BATTERY_MONITOR", False):
+            try:
+                battery = machine.ADC(machine.Pin(1), atten=machine.ADC.ATTN_11DB)
+            except (OSError, ValueError) as exc:
+                print("Battery ADC unavailable:", exc)
     if getattr(settings, "ENABLE_MICROPHONE", False):
         try:
             from inmp441 import INMP441
@@ -309,6 +332,8 @@ def main():
     ap = None
     # Silent background wake: the weekend world grows while the LCD stays dark.
     if power.plan_sleep() is not None:
+        if lcd is not None:
+            lcd.blank()
         enter_sleep(engine, power, sensor, ap, microphone)
     ap = configure_wifi()
     address = socket.getaddrinfo("0.0.0.0", settings.PORT)[0][-1]
@@ -316,7 +341,7 @@ def main():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(address)
     server.listen(2)
-    server.settimeout(0.12)
+    server.settimeout(0.05)
     print("Sanny Pocket World ready on http://192.168.4.1/")
 
     previous = time.ticks_ms()
@@ -326,6 +351,8 @@ def main():
     mic_ms = 0
     mic_react_ms = 60000  # First confirmed sample can create one event.
     uptime_ms = 0
+    next_frame = 0
+    next_battery = 0
     while True:
         now = time.ticks_ms()
         delta = max(0, time.ticks_diff(now, previous))
@@ -344,6 +371,8 @@ def main():
             except OSError as exc:
                 print("Motion read failed, disabling sensor:", exc)
                 sensor = None
+                motion.connected = False
+                motion.tilt_x = motion.tilt_y = 0
         if microphone is not None and mic_ms >= 250:
             mic_ms %= 250
             try:
@@ -367,7 +396,40 @@ def main():
         if since_save >= SAVE_INTERVAL:
             save_worlds(engine)
             since_save = 0
+        if lcd is not None and uptime_ms >= next_frame:
+            next_frame = uptime_ms + 125
+            if power.status()["mode"] == "sleep":
+                lcd.blank()
+            else:
+                if touch is not None:
+                    try:
+                        point = touch.read_press()
+                    except OSError:
+                        point = None
+                    if point is not None:
+                        x, y = point
+                        if y >= 175:
+                            lcd.select(-1 if x < 120 else 1)
+                            print("LCD world:", lcd.world_id)
+                        elif y < 65 and lcd.world_id == "aquarium":
+                            lcd.select_water(engine.worlds[lcd.world_id])
+                        elif engine.tap(lcd.world_id):
+                            save_worlds(engine)
+                            since_save = 0
+                if battery is not None and uptime_ms >= next_battery:
+                    next_battery = uptime_ms + 5000
+                    try:
+                        millivolts = battery.read_uv() * 3 // 1000
+                        # Apply only after verifying the battery-powered supply.
+                        battery_low = 2500 <= millivolts < (3650 if battery_low else 3500)
+                    except (AttributeError, OSError, ValueError) as exc:
+                        print("Battery voltage measurement failed:", exc)
+                        battery = None
+                        battery_low = False
+                lcd.render(engine, motion, uptime_ms, battery_low)
         if power.plan_sleep() is not None:
+            if lcd is not None:
+                lcd.blank()
             enter_sleep(engine, power, sensor, ap, microphone)
         try:
             client, _ = server.accept()
