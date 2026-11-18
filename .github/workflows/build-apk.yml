@@ -20,7 +20,15 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Install Android platform
-        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+        shell: bash
+        run: |
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          if [ -z "$SDK_MANAGER" ]; then
+            echo 'Android sdkmanager was not found on this runner.' >&2
+            exit 1
+          fi
+          "$SDK_MANAGER" --install 'platforms;android-35' 'build-tools;35.0.0'
       - name: Gradle 8.11.1
         uses: gradle/actions/setup-gradle@v4
         with:
