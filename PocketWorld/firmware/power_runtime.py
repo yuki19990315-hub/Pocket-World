@@ -81,7 +81,9 @@ class PowerRuntime:
         return {"schedule": self.work.config, "clock_synced": current is not None,
                 "sleep_supported": self.sleep_supported, "now": current,
                 "mode": state["mode"], "next_wake": state["next_wake"],
-                "next_sleep": state["next_sleep"]}
+                "next_sleep": state["next_sleep"],
+                "day_phase": self.work.day_phase(current),
+                "day_timeline": self.work.day_timeline()}
 
     def update_schedule(self, value):
         clean = validate_schedule(value)

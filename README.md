@@ -16,7 +16,7 @@ Waveshare ESP32-S3-Touch-LCD-1.28（愛称 **サンニー**）とAndroidスマ�
 2. 最新の成功した実行を開き、ページ下部の **Artifacts** から `SannyCompanion-debug-apk` をダウンロードする。
 3. ZIPを展開してAndroidスマホにAPKをインストールする。
 
-これは開発用のデバッグAPKです。Android実機テストはまだ完了していません。v0.6のアプリ設定機能にはESP32側へv0.6の`main.py`等をUSBで導入する必要があります。
+これは開発用のデバッグAPKです。Android実機テストはまだ完了していません。v0.7の「起床から就寝までがサンニーの1日」演出にはESP32側へv0.7の`main.py`・`work_schedule.py`・`round_screen.py`等をUSBで導入する必要があります。
 
 ## はじめる前に
 

@@ -43,7 +43,7 @@ def _time_minutes(text):
     return hh * 60 + mm
 
 
-DEFAULT_SCHEDULE = {"enabled": False, "wake": "08:00", "sleep": "18:00",
+DEFAULT_SCHEDULE = {"enabled": False, "wake": "08:30", "sleep": "17:30",
                     "exclude_jp_holidays": True, "timezone": "Asia/Tokyo"}
 
 
@@ -86,6 +86,44 @@ class WorkSchedule:
     def _local_parts(unix_seconds):
         local = int(unix_seconds) + JST_SECONDS
         return divmod(local, SECONDS_PER_DAY)
+
+    def day_timeline(self):
+        """Fit a complete visual day into the configured waking interval.
+
+        08:30-17:30 becomes dawn until 09:00, dusk from 15:00,
+        lamplit night from 16:00 and lights-out at 17:30.
+        """
+        start = _time_minutes(self.config["wake"])
+        finish = _time_minutes(self.config["sleep"])
+        duration = finish - start
+        def clock(minute):
+            return "%02d:%02d" % divmod(minute, 60)
+        return {"sunrise": clock(start),
+                "daylight": clock(start + duration // 18),
+                "sunset": clock(start + duration * 13 // 18),
+                "nightfall": clock(start + duration * 15 // 18),
+                "lights_out": clock(finish)}
+
+    def day_phase(self, unix_seconds):
+        """Only a trusted, scheduled Japanese workday controls night mode."""
+        if unix_seconds is None or not self.config["enabled"]:
+            return "day"
+        mode = self.state(unix_seconds)["mode"]
+        if mode == "sleep":
+            return "lights_out"
+        if mode != "active":
+            return "day"  # Fail visibly open if holiday data is missing.
+        _, second = self._local_parts(unix_seconds)
+        minute = second // 60
+        wake = _time_minutes(self.config["wake"])
+        timeline = self.day_timeline()
+        if minute < _time_minutes(timeline["daylight"]):
+            return "dawn"
+        if minute < _time_minutes(timeline["sunset"]):
+            return "day"
+        if minute < _time_minutes(timeline["nightfall"]):
+            return "dusk"
+        return "night"
 
     def state(self, unix_seconds):
         if not self.config["enabled"]:

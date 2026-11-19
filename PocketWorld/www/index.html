@@ -38,6 +38,7 @@
     .water-tab{font-size:12px;padding:11px 5px;border:1px solid #4e797a;background:#203d47;color:#d6efec;border-radius:12px}
     .water-tab.active{background:#366c7b;border-color:#9ed8df;color:#fff}
     .water-tab:disabled{opacity:.45;cursor:not-allowed}
+    .phase-tabs{display:flex;gap:5px;flex-wrap:wrap}.phase-btn{background:#253d3d;border:1px solid #4a665d;border-radius:9px;color:#b6d2c0;padding:7px 9px;font-size:11px}.phase-btn.active{background:#46634c;color:#fff3c8;border-color:#c4b98b}
     [hidden]{display:none!important}
     .side{display:grid;gap:13px}.panel{background:#182a2d;border:1px solid var(--stroke);border-radius:19px;padding:18px}
     .panel h3{display:flex;justify-content:space-between;margin:0 0 15px;font-size:15px}.panel h3 span{font-weight:400;color:#9db2a8;font-size:11px}
@@ -82,6 +83,7 @@
     <div class="side">
       <section class="panel"><h3>世界のようす <span>LIVE STATUS</span></h3><div class="stats" id="stats"></div></section>
       <section class="panel"><h3>観察ノート <span>FIELD NOTES</span></h3><div class="timebox"><span>経過時間</span><b id="elapsed">0分</b></div><div class="timebox"><span>現在の発展段階</span><b id="stage">誕生したばかり</b></div><div class="timebox"><span>更新</span><b id="sync">5秒ごと</b></div></section>
+      <section class="panel"><h3>☀️ サンニーの1日 <span>DAY / NIGHT</span></h3><p class="sound-description" id="day-cycle">起床から就寝までに、朝・昼・夕暮れ・夜が巡ります。</p><div class="timebox"><span>いまの空</span><b id="day-phase">☀ 昼</b></div><div class="phase-tabs" aria-label="1日の風景をプレビュー"><button class="phase-btn active" data-phase="auto">自動</button><button class="phase-btn" data-phase="dawn">朝</button><button class="phase-btn" data-phase="day">昼</button><button class="phase-btn" data-phase="dusk">夕方</button><button class="phase-btn" data-phase="night">夜</button><button class="phase-btn" data-phase="lights_out">消灯</button></div></section>
       <section class="panel"><h3>🎤 音で変わる世界 <span>SOUND REACTIONS</span></h3><p class="sound-description" id="sound-description">周囲の音で小さな世界が変化します。</p><div class="timebox"><span>マイクの状態</span><b id="sound-status">外付けマイク待ち</b></div><div class="timebox"><span>音のようす</span><b id="sound-level">未計測</b></div></section>
       <section class="panel"><h3>🌀 手の中の重力 <span>GYRO / MOTION</span></h3><p class="sound-description">サンニーを傾けると、世界が少しだけ重力に反応します。振るイベントは初期設定ではOFFです。</p><div class="timebox"><span>6軸センサー</span><b id="motion-status">実機接続待ち</b></div><div class="timebox"><span>傾き</span><b id="motion-tilt">未計測</b></div></section>
       <section class="panel"><h3>世界の発見ノート <span>24 LATEST EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
@@ -114,6 +116,8 @@
   };
   let selected = "nature", waterArea = "river", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
   let displayState={connected:false,selected:null,battery:null};
+  let powerState={day_phase:"day",day_timeline:{sunrise:"08:30",sunset:"15:00",nightfall:"16:00",lights_out:"17:30"}};
+  let previewPhase="auto";
   let audioState = {connected:false,level:null,band:null};
   let motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};
   let lastShakeId=null, shakeUntil=0;
@@ -194,6 +198,27 @@
       rect(x,y+1,1,1,clothes[i%clothes.length]); // torso
       rect(x,y+2,1,1,"#20252b");    // feet
     });
+    ctx.restore();
+  }
+  const phaseLabels={dawn:"🌅 日の出",day:"☀ 昼",dusk:"🌇 夕暮れ",night:"🌙 夜・街灯点灯",lights_out:"🌑 消灯・おやすみ"};
+  function activePhase(){return previewPhase==="auto"?(powerState.day_phase||"day"):previewPhase;}
+  function drawDayLighting(world){
+    const phase=activePhase();
+    const shade={dawn:"#f5b15a29",dusk:"#a85c526e",night:"#071833ad",lights_out:"#040f25d9"}[phase];
+    if(shade){ctx.fillStyle=shade;ctx.fillRect(0,0,360,360);}
+    if(selected!=="city"||phase!=="night")return;
+    ctx.save();ctx.scale(1.5,1.5);
+    for(const [x,y] of [[49,119],[77,119]]){
+      rect(x,y,2,2,"#ffbb49");rect(x,y,1,1,"#fff2b7");
+    }
+    const windows=[[35,91],[77,96],[111,110],[162,111],[211,101],[218,124],[153,89],[130,132],[60,112],[190,138],[102,150],[145,150]];
+    for(const [x,y] of windows.slice(0,Math.min(12,Math.max(0,(world.houses||1)-1)))){
+      rect(x,y,2,2,"#ffd275");rect(x,y,1,1,"#fff9d8");
+    }
+    const posts=[[119,158],[141,171],[93,192],[156,192],[124,215],[79,174]];
+    for(const [x,y] of posts.slice(0,Math.min(6,Math.max(0,(world.houses||1)-1)))){
+      rect(x,y,1,7,"#39454a");rect(x-1,y-2,3,2,"#ffc26c");rect(x,y-2,1,1,"#fff6bd");
+    }
     ctx.restore();
   }
   function crystal(x,y){rect(x-3,y-8,6,14,"#bc9ee9");rect(x,y-11,3,14,"#e6cbfa");rect(x-6,y-3,5,8,"#7b80c6");rect(x+3,y-2,4,7,"#6ea5d5");}
@@ -346,6 +371,7 @@
       }
       if(["city","hybrid","fantasy"].includes(selected))drawTinyResidents(world,t);
     }
+    drawDayLighting(world);
     ctx.restore();hitAreas=[];drawShakeSparkles(t);ctx.restore();
     return true;
   }
@@ -360,7 +386,7 @@
     if(selected==="forest" || selected==="aquarium"){
       hitAreas=[];
       if(selected==="forest")drawForest(world,t);else drawAquarium(world,t);
-      ctx.restore();drawShakeSparkles(t);ctx.restore();return;
+      drawDayLighting(world);ctx.restore();drawShakeSparkles(t);ctx.restore();return;
     }
     const size=12, cols=30;hitAreas=[];
     for(let gy=0;gy<cols;gy++)for(let gx=0;gx<cols;gx++){
@@ -405,7 +431,7 @@
       ctx.strokeStyle="#c3e3e5aa";ctx.lineWidth=2;ctx.beginPath();
       for(let i=0;i<38;i++){const x=hash(i,71,world.seed)*360,y=(hash(i,72,world.seed)*360+t/17)%360;ctx.moveTo(x,y);ctx.lineTo(x-6,y+14);}ctx.stroke();
     }
-    drawShakeSparkles(t);ctx.restore();
+    drawDayLighting(world);drawShakeSparkles(t);ctx.restore();
   }
   function drawShakeSparkles(t){
     if(Date.now()>shakeUntil)return;
@@ -456,6 +482,10 @@
     $("stats").innerHTML=metrics.map(([label,value,unit])=>'<div class="stat"><small>'+label+'</small><strong>'+value+'</strong><em>'+unit+'</em></div>').join("");
     $("elapsed").textContent=Math.floor(w.minutes/60)+"時間 "+(w.minutes%60)+"分";
     $("stage").textContent=isWater?({river:"川の暮らしが成長中",ocean:"サンゴ礁が成長中",deepsea:"光る生態系が成長中"})[waterArea]:stage(w);
+    const timeline=powerState.day_timeline||{};
+    $("day-cycle").textContent="日の出 "+(timeline.sunrise||"08:30")+" → 夕方 "+(timeline.sunset||"15:00")+" → 灯り "+(timeline.nightfall||"16:00")+" → 消灯 "+(timeline.lights_out||"17:30")+"。時間変更にも連動します。";
+    $("day-phase").textContent=phaseLabels[activePhase()]||phaseLabels.day;
+    document.querySelectorAll(".phase-btn").forEach(btn=>btn.classList.toggle("active",btn.dataset.phase===previewPhase));
     $("sound-description").textContent=soundDescriptions[selected];
     $("sound-status").textContent=audioState.connected?"反応中":"外付けマイク待ち";
     $("sound-level").textContent=audioState.connected?({quiet:"静か",active:"活動中",loud:"にぎやか"}[audioState.band]||"計測中")+" ・ "+audioState.level+"/100":"未計測";
@@ -478,6 +508,7 @@
       if(!response.ok)throw Error("No ESP32 API");const data=await response.json();
       if(!Array.isArray(data.worlds)||data.worlds.length!==6)throw Error("Bad state");
       current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
+      powerState=data.power||powerState;
       displayState=data.display||{connected:false,selected:null,battery:null};
       audioState=data.audio&&typeof data.audio.connected==="boolean"?data.audio:{connected:false,level:null,band:null};
       motionState=data.motion&&typeof data.motion.connected==="boolean"?data.motion:{connected:false,tilt_x:0,tilt_y:0,shake_id:0};
@@ -487,6 +518,7 @@
     }catch(err){
       if(live)showToast("ESP32との通信が切れました。再接続を待っています。");
       live=false;current=Object.fromEntries(makeDemo().map(w=>[w.id,w]));audioState={connected:false,level:null,band:null};
+      powerState={day_phase:"day",day_timeline:{sunrise:"08:30",sunset:"15:00",nightfall:"16:00",lights_out:"17:30"}};
       displayState={connected:false,selected:null,battery:null};
       motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};lastShakeId=null;
       $("connection").textContent="● デモ表示";$("connection").classList.add("demo");
@@ -494,6 +526,7 @@
     render();
   }
   document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>setWorld(btn.dataset.world)));
+  document.querySelectorAll('.phase-btn').forEach(btn=>btn.addEventListener('click',()=>{previewPhase=btn.dataset.phase;render();}));
   document.querySelectorAll('.water-tab').forEach(btn=>btn.addEventListener('click',()=>setWaterArea(btn.dataset.area)));
   $("zoom-btn").addEventListener("click",()=>{enlarged=!enlarged;$("zoom-btn").textContent=enlarged?"元に戻す −":"拡大する ＋";});
   $("device-select").addEventListener("click",async()=>{

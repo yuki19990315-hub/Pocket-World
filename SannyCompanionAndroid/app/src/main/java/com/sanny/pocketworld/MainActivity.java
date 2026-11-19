@@ -323,18 +323,18 @@ public class MainActivity extends Activity {
         routine.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
         add(col,routine,-2,16);
         add(routine,label("🌙 サンニーの生活時間",17,ACCENT,true),-2,9);
-        add(routine,label("平日は指定した時間だけ活動。土日と日本の祝日・振替休日は画面を消して休む設定です。",12,MUTED,false),-2,12);
+        add(routine,label("起床時刻が日の出、就寝時刻が消灯。活動時間を1日の風景に圧縮します。8:30〜17:30なら15:00に夕焼け、16:00に街灯・家の明かりがつきます。土日祝日はお休み。",12,MUTED,false),-2,12);
         Switch scheduleEnabled=new Switch(this);
         scheduleEnabled.setText("自動起床・スリープを使う");
         scheduleEnabled.setTextColor(Color.WHITE);
         scheduleEnabled.setChecked(false);
         add(routine,scheduleEnabled,-2,10);
 
-        final String[] wakeHour={"08:00"};final String[] sleepHour={"18:00"};
-        Button wakeButton=secondary("☀ 起床 08:00");
+        final String[] wakeHour={"08:30"};final String[] sleepHour={"17:30"};
+        Button wakeButton=secondary("☀ 起床 08:30");
         wakeButton.setOnClickListener(v->pickScheduleTime(wakeHour,wakeButton,"☀ 起床"));
         add(routine,wakeButton,46,9);
-        Button sleepButton=secondary("🌙 就寝 18:00");
+        Button sleepButton=secondary("🌙 就寝 17:30");
         sleepButton.setOnClickListener(v->pickScheduleTime(sleepHour,sleepButton,"🌙 就寝"));
         add(routine,sleepButton,46,11);
         TextView powerStatus=label("まず『サンニーから設定を取得』を押してね。",12,MUTED,false);
@@ -349,7 +349,7 @@ public class MainActivity extends Activity {
         Button syncClock=secondary("現在時刻をサンニーと同期");
         syncClock.setOnClickListener(v->syncSannyClock(powerStatus));
         add(routine,syncClock,46,12);
-        add(routine,label("※ v0.6のmain.pyなら時間外は画面のバックライトだけ消え、Wi-Fi接続と設定変更は可能です。電池消費を抑える深いスリープは実機検証前のため安全ロック中です。",12,MUTED,false),-2,5);
+        add(routine,label("※ 就寝時は家・街灯を消して画面OFF。深いスリープは復帰テストが済むまで本体側で安全ロック中です。ロック中はWi-Fi接続を維持します。",12,MUTED,false),-2,5);
 
         LinearLayout lighting=vertical(17);
         lighting.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
@@ -403,6 +403,13 @@ public class MainActivity extends Activity {
         },Integer.parseInt(parts[0]),Integer.parseInt(parts[1]),true).show();
     }
 
+    private static String scheduleTimeline(JSONObject data) {
+        JSONObject times=data.optJSONObject("day_timeline");
+        if(times==null)return "";
+        return " 日の出 "+times.optString("sunrise","?")+" / 夕方 "+times.optString("sunset","?")+
+            " / 灯り "+times.optString("nightfall","?")+" / 消灯 "+times.optString("lights_out","?")+"。";
+    }
+
     private void fetchPowerSchedule(Switch enabled, String[] wake, String[] sleep,
                                     Button wakeButton, Button sleepButton, TextView status) {
         preferWifiRoute();status.setText("サンニーから取得中…");
@@ -413,6 +420,7 @@ public class MainActivity extends Activity {
                 String start=schedule.getString("wake"),end=schedule.getString("sleep");
                 boolean active=schedule.getBoolean("enabled");
                 String info="現在の設定を読み込みました。"+
+                    scheduleTimeline(data)+
                     (data.optBoolean("screen_blank_supported")?" 時間外の画面消灯に対応。":" 画面消灯には本体の更新が必要。")+
                     (data.optBoolean("sleep_supported")?" 深いスリープも有効。":" 深いスリープは安全ロック中。")+
                     (data.optBoolean("clock_synced")?" 時計同期済み。":" 時計の同期が必要。")+
@@ -431,6 +439,7 @@ public class MainActivity extends Activity {
             try{
                 JSONObject data=new JSONObject(SannyApi.setPowerSchedule(enabled,wake,sleep,secret));
                 String result="✓ サンニー本体へ保存しました。"+
+                    scheduleTimeline(data)+
                     (data.optBoolean("screen_blank_supported")?" 時間外は画面消灯します。":" 画面消灯は本体更新後に利用できます。")+
                     (data.optBoolean("sleep_supported")?" 深いスリープ有効。":" 深いスリープは実機検証待ちです。");
                 runOnUiThread(()->{status.setText(result);setConnected(true);});

@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
 from round_screen import (BatteryGauge, CST816Touch, FRAME_SIZE, GC9A01,
-                          RoundScreen, blend_row, town_art_alpha, town_people)
+                          RoundScreen, ambience_row, blend_row, town_art_alpha, town_people)
 
 
 class Pin:
@@ -99,6 +99,38 @@ class Display:
 
 
 class RoundScreenTest(unittest.TestCase):
+    def test_day_tints_rgb565_and_city_lamps_appear_only_at_night(self):
+        white=b"\xff\xff"
+        self.assertEqual(ambience_row(white,"day"),white)
+        self.assertNotEqual(ambience_row(white,"dawn"),white)
+        self.assertNotEqual(ambience_row(white,"dusk"),white)
+        self.assertNotEqual(ambience_row(white,"night"),white)
+        self.assertNotEqual(ambience_row(white,"lights_out"),white)
+        previous=os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                os.mkdir("assets")
+                for stage in ("young","mature"):
+                    with open("assets/city-"+stage+".dat","wb") as handle:
+                        handle.write(white*(FRAME_SIZE//2))
+                screen=RoundScreen(Display())
+                screen.choose("city")
+                town={"houses":2,"residents":2}
+                self.assertTrue(screen.show(0,world=town))
+                before=len([x for x in screen.driver.calls if x[0]=="solid"])
+                self.assertTrue(screen.set_lighting("night",0,world=town))
+                with_lamps=len([x for x in screen.driver.calls if x[0]=="solid"])
+                self.assertGreater(with_lamps,before)
+                self.assertEqual(screen.status()["day_phase"],"night")
+                self.assertTrue(screen.animate(0,world=town))
+                self.assertTrue(screen.set_lighting("lights_out",0,world=town))
+                after=len([x for x in screen.driver.calls if x[0]=="solid"])
+                self.assertGreater(after,with_lamps)  # walkers, but no added lamps
+                self.assertFalse(screen.set_lighting("lights_out",0,world=town))
+            finally:
+                os.chdir(previous)
+
     def test_town_population_moves_as_exact_one_by_three_pixel_figures(self):
         self.assertEqual(town_art_alpha(0, 1), 0)
         self.assertEqual(town_art_alpha(43200, 1), 0)

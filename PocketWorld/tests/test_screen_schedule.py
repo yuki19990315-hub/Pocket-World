@@ -14,6 +14,12 @@ class FakeScreen:
     def __init__(self):
         self.visible = True
         self.transitions = []
+        self.phases = []
+
+    def set_lighting(self, phase, minutes, world=None):
+        assert world is not None and world["id"] == self.selected
+        self.phases.append(phase)
+        return True
 
     def set_visible(self, enabled, minutes, world=None):
         assert world is not None and world["id"] == self.selected

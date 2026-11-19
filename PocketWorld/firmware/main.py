@@ -150,10 +150,12 @@ def sync_screen_schedule(screen, power, engine):
     """
     if screen is None or power is None:
         return False
-    asleep = power.status()["mode"] == "sleep"
+    status = power.status()
+    world = engine.worlds[screen.selected]
+    screen.set_lighting(status.get("day_phase", "day"), world["minutes"], world=world)
+    asleep = status["mode"] == "sleep"
     return screen.set_visible(not asleep,
-                              engine.worlds[screen.selected]["minutes"],
-                              world=engine.worlds[screen.selected])
+                              world["minutes"], world=world)
 
 
 def query_param(path, key):
@@ -251,7 +253,7 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.6", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.7", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):
@@ -264,6 +266,7 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
             snapshot["audio"] = microphone.status()
         snapshot["display"] = screen.status() if screen is not None else {
             "connected": False, "selected": None}
+        snapshot["power"] = power.status() if power is not None else PowerRuntime().status()
         response(client, "200 OK", "application/json; charset=utf-8", json.dumps(snapshot))
         return bool(changed)
     elif method == "GET" and path == "/api/power":

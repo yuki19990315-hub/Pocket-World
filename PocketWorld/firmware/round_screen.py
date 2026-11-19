@@ -66,6 +66,27 @@ def blend_row(early, late, alpha):
     return result
 
 
+def ambience_row(data, phase):
+    """Warm dawn/sunset or dim blue night, without an LCD framebuffer."""
+    if phase not in ("dawn", "dusk", "night", "lights_out"):
+        return data
+    output = bytearray(len(data))
+    for i in range(0, len(data), 2):
+        color = (data[i] << 8) | data[i + 1]
+        red, green, blue = (color >> 11) & 31, (color >> 5) & 63, color & 31
+        if phase == "dawn":
+            red, green, blue = min(31, red * 108 // 100 + 1), green * 93 // 100, blue * 79 // 100
+        elif phase == "dusk":
+            red, green, blue = min(31, red * 105 // 100 + 2), green * 72 // 100, blue * 65 // 100
+        elif phase == "night":
+            red, green, blue = red * 36 // 100, green * 40 // 100, min(31, blue * 65 // 100 + 1)
+        else:
+            red, green, blue = red * 17 // 100, green * 18 // 100, blue * 27 // 100
+        value = (red << 11) | (green << 5) | blue
+        output[i], output[i + 1] = value >> 8, value & 255
+    return output
+
+
 def valid_frame(path):
     try:
         import os
@@ -303,6 +324,7 @@ class RoundScreen:
         self.info_frames = 0
         self.shake_last_id = None
         self.shake_frames = 0
+        self.lighting_phase = "day"
 
     def choose(self, ident):
         if ident not in WORLD_IDS:
@@ -362,13 +384,16 @@ class RoundScreen:
                     a, b = early.read(WIDTH * 2), mature.read(WIDTH * 2)
                     if len(a) != WIDTH * 2 or len(b) != WIDTH * 2:
                         raise OSError("Truncated display asset")
-                    self.driver.write_pixels(blend_row(a, b, alpha))
+                    self.driver.write_pixels(ambience_row(blend_row(a, b, alpha),
+                                                         self.lighting_phase))
             finally:
                 self.driver.stop_pixels()
         self.particles = []
         self.people = []
         self.info_frames = 0
         self.last_draw_at = int(minutes)
+        if self.selected == "city" and self.lighting_phase == "night":
+            self._town_lamps(world)
         if self.battery is not None:
             self.battery_state = self.battery.status()
             if self.battery_state["low"]:
@@ -381,6 +406,36 @@ class RoundScreen:
                 self.driver.solid(97, 16, 43, 16, 0x0427)
                 self.driver.solid(100, 19, 31, 10, 0x05E0)
                 self.driver.solid(132, 22, 4, 4, 0x05E0)
+        return True
+
+    def _town_lamps(self, world):
+        """Light the starter cottage and more streetlamps as the town grows."""
+        homes = world.get("houses", 1) if world else 1
+        # The only home at birth gets two warmly lit windows.
+        for x, y in ((49, 119), (77, 119)):
+            self.driver.solid(x, y, 2, 2, 0xFD20)
+            self.driver.solid(x, y, 1, 1, 0xFFDE)
+        # More windows gradually light up with each saved house milestone.
+        windows = ((35, 91), (77, 96), (111, 110), (162, 111),
+                   (211, 101), (218, 124), (153, 89), (130, 132),
+                   (60, 112), (190, 138), (102, 150), (145, 150))
+        for x, y in windows[:max(0, min(12, homes - 1))]:
+            self.driver.solid(x, y, 2, 2, 0xFDE0)
+            self.driver.solid(x, y, 1, 1, 0xFFFF)
+        for x, y in ((119, 158), (141, 171), (93, 192),
+                     (156, 192), (124, 215), (79, 174))[:max(0, min(6, homes - 1))]:
+            self.driver.solid(x, y, 1, 7, 0x3186)   # slender lamppost
+            self.driver.solid(x - 1, y - 2, 3, 2, 0xFCA0)
+            self.driver.solid(x, y - 2, 1, 1, 0xFFE0)
+
+    def set_lighting(self, phase, minutes, world=None):
+        if phase not in ("dawn", "day", "dusk", "night", "lights_out"):
+            raise ValueError("Unknown day phase")
+        if phase == self.lighting_phase:
+            return False
+        self.lighting_phase = phase
+        if self.visible:
+            self.show(minutes, force=True, world=world)
         return True
 
     def set_visible(self, enabled, minutes, world=None):
@@ -429,8 +484,9 @@ class RoundScreen:
                 offset = ((y + line) * WIDTH + x) * 2
                 young.seek(offset)
                 mature.seek(offset)
-                self.driver.write_pixels(blend_row(young.read(size * 2),
-                                                   mature.read(size * 2), alpha))
+                self.driver.write_pixels(ambience_row(blend_row(young.read(size * 2),
+                                                                mature.read(size * 2), alpha),
+                                                     self.lighting_phase))
         finally:
             self.driver.stop_pixels()
 
@@ -444,7 +500,9 @@ class RoundScreen:
                 offset = ((y + line) * WIDTH + x) * 2
                 young.seek(offset)
                 mature.seek(offset)
-                self.driver.write_pixels(blend_row(young.read(2), mature.read(2), alpha))
+                self.driver.write_pixels(ambience_row(blend_row(young.read(2),
+                                                                mature.read(2), alpha),
+                                                     self.lighting_phase))
         finally:
             self.driver.stop_pixels()
 
@@ -494,6 +552,8 @@ class RoundScreen:
                 self.driver.solid(x, y, 1, 1, 0xFFBE)  # head
                 self.driver.solid(x, y + 1, 1, 1, shirts[i % len(shirts)])
                 self.driver.solid(x, y + 2, 1, 1, 0x2104)  # feet
+            if self.lighting_phase == "night":
+                self._town_lamps(world)
             return True
         self.people = []
         watery = self.selected == "aquarium"
@@ -543,6 +603,7 @@ class RoundScreen:
                 "screen_on": self.visible,
                 "brightness": self.brightness_setting,
                 "animation_tick": self.animation_tick,
+                "day_phase": self.lighting_phase,
                 "touch_connected": self.touch is not None,
                 "battery": self.battery_state or {"voltage": None, "low": False,
                                                  "charging": None,

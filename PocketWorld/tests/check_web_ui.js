@@ -11,6 +11,7 @@ const script = match[1];
 
 function fakeNode(dataset = {}) {
   const classes = new Set();
+  const listeners = {};
   return {
     dataset, textContent: '', innerHTML: '', hidden: false, disabled: false,
     classList: {
@@ -18,7 +19,9 @@ function fakeNode(dataset = {}) {
       remove(x) { classes.delete(x); },
       toggle(x, on) { if (on) classes.add(x); else classes.delete(x); },
     },
-    addEventListener() {}, setAttribute() {}, replaceChildren() {},
+    addEventListener(type, callback) { listeners[type] = callback; },
+    click() { if (listeners.click) listeners.click(); },
+    setAttribute() {}, replaceChildren() {},
     querySelectorAll() { return []; },
     getBoundingClientRect() { return {left: 0, top: 0, width: 360, height: 360}; },
   };
@@ -29,6 +32,8 @@ async function runPreview(world, area, liveState = false, illustrated = false) {
   const worldButtons = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium']
     .map(id => fakeNode({world: id}));
   const areaButtons = ['river', 'ocean', 'deepsea'].map(id => fakeNode({area: id}));
+  const phaseButtons = ['auto','dawn','day','dusk','night','lights_out']
+    .map(id => fakeNode({phase: id}));
   const waterTabs = fakeNode();
   waterTabs.querySelectorAll = () => areaButtons;
   nodes.set('water-tabs', waterTabs);
@@ -36,11 +41,13 @@ async function runPreview(world, area, liveState = false, illustrated = false) {
   let translated = 0;
   let artworkDrawn = 0;
   const smallPixels = [];
+  const paintColors = [];
   const context = {
     clearRect() {}, save() {}, restore() {}, beginPath() {}, arc() {}, clip() {},
     translate() { translated += 1; }, scale() {}, moveTo() {}, lineTo() {}, stroke() {},
     fillRect(x, y, width, height) {
       drawn += 1;
+      paintColors.push(context.fillStyle);
       if (width === 1 && height === 1) smallPixels.push([x, y]);
     },
     drawImage() { artworkDrawn += 1; },
@@ -53,6 +60,7 @@ async function runPreview(world, area, liveState = false, illustrated = false) {
     querySelectorAll(selector) {
       if (selector === '.tab') return worldButtons;
       if (selector === '.water-tab') return areaButtons;
+      if (selector === '.phase-btn') return phaseButtons;
       return [];
     },
     createElement() { return fakeNode(); },
@@ -88,6 +96,16 @@ async function runPreview(world, area, liveState = false, illustrated = false) {
     assert.equal(smallPixels.length, 6, 'two 1x3 pedestrians use six native pixels');
     assert.match(nodes.get('stats').innerHTML, /<strong>2<\/strong><em>人<\/em>/);
     assert.match(nodes.get('stats').innerHTML, /<strong>1<\/strong><em>軒<\/em>/);
+    paintColors.length = 0;
+    phaseButtons.find(btn => btn.dataset.phase === 'night').click();
+    frame(2600);
+    assert.equal(nodes.get('day-phase').textContent, '🌙 夜・街灯点灯');
+    assert.ok(paintColors.includes('#fff2b7'), 'cottage windows light up at night');
+    paintColors.length = 0;
+    phaseButtons.find(btn => btn.dataset.phase === 'lights_out').click();
+    frame(3000);
+    assert.equal(nodes.get('day-phase').textContent, '🌑 消灯・おやすみ');
+    assert.ok(!paintColors.includes('#fff2b7'), 'lights switch off before bedtime');
   }
   assert.ok(nodes.get('world-title').textContent.length > 0);
   if (liveState) {

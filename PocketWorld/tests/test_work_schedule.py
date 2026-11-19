@@ -38,6 +38,23 @@ class TestWorkSchedule(unittest.TestCase):
         self.assertEqual(s.state(utc(2026, 11, 18, 17, 59))["mode"], "active")
         self.assertEqual(s.state(utc(2026, 11, 18, 18, 0))["mode"], "sleep")
 
+    def test_work_hours_are_a_complete_lit_day(self):
+        schedule=self.schedule(wake="08:30",sleep="17:30")
+        self.assertEqual(schedule.day_timeline(), {
+            "sunrise":"08:30", "daylight":"09:00", "sunset":"15:00",
+            "nightfall":"16:00", "lights_out":"17:30"})
+        for h,m,phase in ((8,29,"lights_out"),(8,30,"dawn"),
+                          (8,59,"dawn"),(9,0,"day"),
+                          (14,59,"day"),(15,0,"dusk"),
+                          (15,59,"dusk"),(16,0,"night"),
+                          (17,29,"night"),(17,30,"lights_out")):
+            self.assertEqual(schedule.day_phase(utc(2026,11,18,h,m)),phase)
+        self.assertEqual(schedule.day_phase(utc(2026,11,23,12)),"lights_out")
+        shifted=self.schedule(wake="09:00",sleep="18:00")
+        self.assertEqual(shifted.day_timeline()["sunset"],"15:30")
+        self.assertEqual(shifted.day_timeline()["nightfall"],"16:30")
+        self.assertEqual(self.schedule(enabled=False).day_phase(utc(2026,11,18,23)),"day")
+
     def test_weekend_and_public_holiday_stay_dark(self):
         s = self.schedule()
         self.assertEqual(s.state(utc(2026, 11, 21, 12))["mode"], "sleep")
