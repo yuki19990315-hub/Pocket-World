@@ -68,7 +68,11 @@ const canvasContext = {
     drawCount++;
     imageDrawCount++;
   },
-  scale(x, y) { assert.deepEqual([x, y], [2, 2]); },
+  scale(x, y) {
+    // The scene draws in virtual 120px coordinates; tiny 1x3px residents
+    // temporarily undo that scale to stay at true LCD pixel size.
+    assert.ok((x === 2 && y === 2) || (x === 0.5 && y === 0.5));
+  },
   save() {}, restore() {}, clearRect() {}
 };
 nodes.world.getContext = () => canvasContext;

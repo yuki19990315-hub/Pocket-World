@@ -511,10 +511,20 @@
       }
     }
     if (world === "nature") {
-      for (let i = 0; i < 2 + Math.floor(g * 3); i++) {
-        const x = 18 + ((i * 29 + t * (1.5 + i * .3)) % 85);
-        const y = 20 + i * 8 + Math.sin(t * 2 + i) * 3;
-        rect(x, y, 2, 1, "#fff8db"); rect(x + 2, y - 1, 2, 1, "#bfd9e9");
+      // The young image starts as a quiet meadow; wildlife arrives as it grows.
+      if (g > .2) {
+        for (let i = 0; i < 1 + Math.floor(g * 3); i++) {
+          const x = 18 + ((i * 29 + t * (1.5 + i * .3)) % 85);
+          const y = 20 + i * 8 + Math.sin(t * 2 + i) * 3;
+          rect(x, y, 2, 1, "#fff8db"); rect(x + 2, y - 1, 2, 1, "#bfd9e9");
+        }
+      }
+      // Tiny moving highlights mark the mature waterfall without repainting it.
+      if (g > .6) {
+        for (let i = 0; i < 3; i++) {
+          const y = 84 + ((t * 6 + i * 7) % 15);
+          rect(85 + (i % 2), y, 1, 2, "#d8f5ff");
+        }
       }
     }
     if (world === "fantasy") {
