@@ -34,7 +34,7 @@ const names = [];
         }
       }
     }
-    if (scene === 'hybrid') {
+    if (scene === 'hybrid' || scene === 'fantasy') {
       const {data, info: raw} = await sharp(png).removeAlpha().raw().toBuffer({resolveWithObject:true});
       for (let y = 0; y < 240; y += 2) for (let x = 0; x < 240; x += 2) {
         const start = (y * 240 + x) * raw.channels;
