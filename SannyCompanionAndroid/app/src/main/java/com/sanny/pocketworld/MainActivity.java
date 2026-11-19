@@ -323,18 +323,18 @@ public class MainActivity extends Activity {
         routine.setBackground(panel(PANEL,18,Color.rgb(65,93,83)));
         add(col,routine,-2,16);
         add(routine,label("🌙 サンニーの生活時間",17,ACCENT,true),-2,9);
-        add(routine,label("起床時刻が日の出、就寝時刻が消灯。活動時間を1日の風景に圧縮します。8:30〜17:30なら15:00に夕焼け、16:00に街灯・家の明かりがつきます。土日祝日はお休み。",12,MUTED,false),-2,12);
+        add(routine,label("起床時刻が日の出、就寝時刻が消灯。活動時間を1日の風景に圧縮します。8:30〜17:15なら15:00に夕焼け、16:00に街灯・家の明かりがつきます。土日祝日はお休み。",12,MUTED,false),-2,12);
         Switch scheduleEnabled=new Switch(this);
         scheduleEnabled.setText("自動起床・スリープを使う");
         scheduleEnabled.setTextColor(Color.WHITE);
         scheduleEnabled.setChecked(false);
         add(routine,scheduleEnabled,-2,10);
 
-        final String[] wakeHour={"08:30"};final String[] sleepHour={"17:30"};
+        final String[] wakeHour={"08:30"};final String[] sleepHour={"17:15"};
         Button wakeButton=secondary("☀ 起床 08:30");
         wakeButton.setOnClickListener(v->pickScheduleTime(wakeHour,wakeButton,"☀ 起床"));
         add(routine,wakeButton,46,9);
-        Button sleepButton=secondary("🌙 就寝 17:30");
+        Button sleepButton=secondary("🌙 就寝 17:15");
         sleepButton.setOnClickListener(v->pickScheduleTime(sleepHour,sleepButton,"🌙 就寝"));
         add(routine,sleepButton,46,11);
         TextView powerStatus=label("まず『サンニーから設定を取得』を押してね。",12,MUTED,false);

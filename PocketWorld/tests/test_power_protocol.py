@@ -65,13 +65,13 @@ class TestPowerProtocol(unittest.TestCase):
         self.assertEqual(result["day_timeline"]["sunrise"], "08:30")
         self.assertEqual(result["day_timeline"]["sunset"], "15:00")
         self.assertEqual(result["day_timeline"]["nightfall"], "16:00")
-        self.assertEqual(result["day_timeline"]["lights_out"], "17:30")
+        self.assertEqual(result["day_timeline"]["lights_out"], "17:15")
 
     def test_phone_state_exposes_the_same_world_day_phase(self):
         client=invoke("GET","/api/state")
         main.service(client,self.engine,self.power)
         state=response_body(client)
-        self.assertEqual(state["power"]["day_timeline"]["lights_out"],"17:30")
+        self.assertEqual(state["power"]["day_timeline"]["lights_out"],"17:15")
         self.assertFalse(state["power"]["sleep_supported"])
 
     def test_schedule_requires_admin_key_and_valid_clock(self):

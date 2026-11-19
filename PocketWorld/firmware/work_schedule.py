@@ -43,7 +43,7 @@ def _time_minutes(text):
     return hh * 60 + mm
 
 
-DEFAULT_SCHEDULE = {"enabled": False, "wake": "08:30", "sleep": "17:30",
+DEFAULT_SCHEDULE = {"enabled": False, "wake": "08:30", "sleep": "17:15",
                     "exclude_jp_holidays": True, "timezone": "Asia/Tokyo"}
 
 
@@ -90,8 +90,8 @@ class WorkSchedule:
     def day_timeline(self):
         """Fit a complete visual day into the configured waking interval.
 
-        08:30-17:30 becomes dawn until 09:00, dusk from 15:00,
-        lamplit night from 16:00 and lights-out at 17:30.
+        08:30-17:15 becomes dawn until 09:00, dusk from 15:00,
+        lamplit night from 16:00 and lights-out at 17:15.
         """
         start = _time_minutes(self.config["wake"])
         finish = _time_minutes(self.config["sleep"])
@@ -99,9 +99,9 @@ class WorkSchedule:
         def clock(minute):
             return "%02d:%02d" % divmod(minute, 60)
         return {"sunrise": clock(start),
-                "daylight": clock(start + duration // 18),
-                "sunset": clock(start + duration * 13 // 18),
-                "nightfall": clock(start + duration * 15 // 18),
+                "daylight": clock(start + duration * 2 // 35),
+                "sunset": clock(start + duration * 26 // 35),
+                "nightfall": clock(start + duration * 30 // 35),
                 "lights_out": clock(finish)}
 
     def day_phase(self, unix_seconds):

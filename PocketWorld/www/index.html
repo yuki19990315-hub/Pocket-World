@@ -116,7 +116,7 @@
   };
   let selected = "nature", waterArea = "river", live = false, enlarged = false, current = {}, hitAreas = [], toastTimer;
   let displayState={connected:false,selected:null,battery:null};
-  let powerState={day_phase:"day",day_timeline:{sunrise:"08:30",sunset:"15:00",nightfall:"16:00",lights_out:"17:30"}};
+  let powerState={day_phase:"day",day_timeline:{sunrise:"08:30",sunset:"15:00",nightfall:"16:00",lights_out:"17:15"}};
   let previewPhase="auto";
   let audioState = {connected:false,level:null,band:null};
   let motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};
@@ -483,7 +483,7 @@
     $("elapsed").textContent=Math.floor(w.minutes/60)+"時間 "+(w.minutes%60)+"分";
     $("stage").textContent=isWater?({river:"川の暮らしが成長中",ocean:"サンゴ礁が成長中",deepsea:"光る生態系が成長中"})[waterArea]:stage(w);
     const timeline=powerState.day_timeline||{};
-    $("day-cycle").textContent="日の出 "+(timeline.sunrise||"08:30")+" → 夕方 "+(timeline.sunset||"15:00")+" → 灯り "+(timeline.nightfall||"16:00")+" → 消灯 "+(timeline.lights_out||"17:30")+"。時間変更にも連動します。";
+    $("day-cycle").textContent="日の出 "+(timeline.sunrise||"08:30")+" → 夕方 "+(timeline.sunset||"15:00")+" → 灯り "+(timeline.nightfall||"16:00")+" → 消灯 "+(timeline.lights_out||"17:15")+"。時間変更にも連動します。";
     $("day-phase").textContent=phaseLabels[activePhase()]||phaseLabels.day;
     document.querySelectorAll(".phase-btn").forEach(btn=>btn.classList.toggle("active",btn.dataset.phase===previewPhase));
     $("sound-description").textContent=soundDescriptions[selected];
@@ -518,7 +518,7 @@
     }catch(err){
       if(live)showToast("ESP32との通信が切れました。再接続を待っています。");
       live=false;current=Object.fromEntries(makeDemo().map(w=>[w.id,w]));audioState={connected:false,level:null,band:null};
-      powerState={day_phase:"day",day_timeline:{sunrise:"08:30",sunset:"15:00",nightfall:"16:00",lights_out:"17:30"}};
+      powerState={day_phase:"day",day_timeline:{sunrise:"08:30",sunset:"15:00",nightfall:"16:00",lights_out:"17:15"}};
       displayState={connected:false,selected:null,battery:null};
       motionState={connected:false,tilt_x:0,tilt_y:0,shake_id:0};lastShakeId=null;
       $("connection").textContent="● デモ表示";$("connection").classList.add("demo");

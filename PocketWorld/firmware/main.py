@@ -253,7 +253,7 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.7", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.7.1", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):
