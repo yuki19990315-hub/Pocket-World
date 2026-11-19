@@ -222,6 +222,67 @@
     falls.forEach(([x,y],i)=>rect(x,y+(tick+i*3)%3,1,1,night?"#3d6b9a":"#b5f5fc"));
     ctx.restore();
   }
+  const waterRipples={
+    nature:[[176,113],[186,137]],city:[[174,195],[177,202],[181,189]],
+    fantasy:[[112,130],[154,127]],forest:[[104,210],[140,219]]
+  };
+  const waterFalls={
+    nature:[[189,174],[194,188]],city:[[181,161]],
+    fantasy:[[131,162],[131,188],[128,209]],
+    forest:[[120,137],[125,164],[121,185]]
+  };
+  function drawWaterAmbient(artId,world,t,growth=1){
+    if(activePhase()==="lights_out" || (artId==="nature"&&growth<.3))return;
+    const tick=Math.floor(t/1400),pace=["windy","rain"].includes(world.weather)?2:1;
+    const night=["night","dusk"].includes(activePhase());
+    const ripple=artId==="deepsea"?(night?"#3f678e":"#869bd1"):(night?"#43778b":"#c5edfa");
+    const falls=night?"#3d6b9a":"#b5f5fc";
+    ctx.save();ctx.scale(1.5,1.5);
+    if(["aquarium","river","deepsea"].includes(artId)){
+      [[75,110],[103,169],[158,142],[184,94],[123,195],[52,137]].forEach(([x,y],i)=>{
+        rect(x+(tick+i)%3-1,y-(tick*pace*2+i*3)%22,i%2?1:2,i%2?1:2,ripple);
+      });
+      [[105,35],[152,46],[178,63]].forEach(([x,y],i)=>{
+        rect(x+(tick+i*2)%5-2,y,1,1,ripple);
+      });
+    }else{
+      (waterRipples[artId]||[]).forEach(([x,y],i)=>{
+        rect(x+(tick*pace+i*2)%5-2,y+(tick+i)%2,2,2,ripple);
+      });
+      if(artId!=="nature"||growth>=.55)(waterFalls[artId]||[]).forEach(([x,y],i)=>{
+        rect(x,y+(tick*pace+i*3)%6,1,1,falls);
+      });
+    }
+    ctx.restore();
+  }
+  function drawNatureAmbient(world,t,growth){
+    if(activePhase()==="lights_out")return;
+    const tick=Math.floor(t/1400),windy=["windy","rain"].includes(world.weather);
+    const night=["night","dusk"].includes(activePhase());
+    const pace=windy?2:4,leaf=night?"#4b773c":"#c2dd58";
+    ctx.save();ctx.scale(1.5,1.5);
+    rect(111+Math.floor(tick/pace)%3-1,66,1,1,leaf);
+    if(growth>=.2){
+      [[68,54],[103,39],[149,69]].forEach(([x,y],i)=>{
+        rect(x+((Math.floor(tick/pace)+i)%3-1)*(windy?2:1),y,2,2,leaf);
+      });
+      [[67,70],[97,75],[138,84]].forEach(([x,y],i)=>{
+        rect(x+(tick*(windy?2:1)+i)%7-3,y+(tick+i*7)%19,1,1,leaf);
+      });
+      for(let i=0;i<3;i++){
+        rect(58+i*40+(tick*(windy?2:1)+i*5)%19,116+i*8+(tick+i*3)%5-2,
+          2,2,night?"#c4b5ec":"#fff2bb");
+      }
+      for(let i=0;i<2;i++){
+        rect(37+i*105+(tick+i*3)%23,34+i*5+(tick+i)%3-1,1,1,night?"#a0b7ce":"#ffffff");
+      }
+    }
+    if(night)[[77,146],[127,114],[163,124],[111,153]].forEach(([x,y],i)=>{
+      rect(x+(tick+i)%3-1,y+(tick+2*i)%3-1,1,1,(tick+i)%3?"#ffe98b":"#8d8d53");
+    });
+    ctx.restore();
+    drawWaterAmbient("nature",world,t,growth);
+  }
   const phaseLabels={dawn:"🌅 日の出",day:"☀ 昼",dusk:"🌇 夕暮れ",night:"🌙 夜・街灯点灯",lights_out:"🌑 消灯・おやすみ"};
   function activePhase(){return previewPhase==="auto"?(powerState.day_phase||"day"):previewPhase;}
   function drawDayLighting(world){
@@ -378,6 +439,7 @@
         ctx.strokeStyle="#e1fbff88";ctx.lineWidth=2;ctx.beginPath();
         ctx.ellipse(180,45,24+i*19+Math.sin(t/390)*9,5+i*3,0,0,Math.PI*2);ctx.stroke();
       }
+      drawWaterAmbient(artId,world,t,progress);
     }else{
       const particles=["city","hybrid"].includes(selected)?0:selected==="fantasy"?20:selected==="forest"?10:7;
       for(let i=0;i<particles;i++){
@@ -396,6 +458,8 @@
         }ctx.stroke();
       }
       if(selected==="hybrid")drawHybridAmbient(world,t);
+      else if(selected==="nature")drawNatureAmbient(world,t,progress);
+      else drawWaterAmbient(artId,world,t,progress);
       if(["city","hybrid","fantasy"].includes(selected))drawTinyResidents(world,t);
     }
     drawDayLighting(world);

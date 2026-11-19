@@ -514,6 +514,7 @@
           if (Math.sin(t * 2.4 + i * 2) > .42) rect(x, y + Math.sin(t + i) * 2, 1, 2, "#fff3a8");
         }
       }
+      livingWaterDetails("forest", t);
     }
     if (world === "aquarium") {
       const count = 1 + Math.floor(g * 4);
@@ -528,23 +529,36 @@
         const y = (105 + i * 27 - t * (2 + i % 4) + 2400) % 117;
         bubble(x, y, 1 + i % 2);
       }
+      livingWaterDetails("aquarium", t);
     }
     if (world === "nature") {
-      // The young image starts as a quiet meadow; wildlife arrives as it grows.
-      if (g > .2) {
-        for (let i = 0; i < 1 + Math.floor(g * 3); i++) {
-          const x = 18 + ((i * 29 + t * (1.5 + i * .3)) % 85);
-          const y = 20 + i * 8 + Math.sin(t * 2 + i) * 3;
-          rect(x, y, 2, 1, "#fff8db"); rect(x + 2, y - 1, 2, 1, "#bfd9e9");
+      // Physical LCD pixels; growth is the image cross-fade, not population.
+      const tick=Math.floor(t*1000/1400),growth=limit(elapsedDays/30,0,1);
+      const dark=night();
+      ctx.save();ctx.scale(.5,.5);
+      rect(111+Math.floor(tick/4)%3-1,66,1,1,dark?"#4b773c":"#c2dd58");
+      if(growth>=.2){
+        [[68,54],[103,39],[149,69]].forEach(([x,y],i)=>{
+          rect(x+(Math.floor(tick/4)+i)%3-1,y,2,2,dark?"#4b773c":"#c2dd58");
+        });
+        [[67,70],[97,75],[138,84]].forEach(([x,y],i)=>{
+          rect(x+(tick+i)%7-3,y+(tick+i*7)%19,1,1,dark?"#4b773c":"#c2dd58");
+        });
+        for(let i=0;i<3;i++){
+          rect(58+i*40+(tick+i*5)%19,116+i*8+(tick+i*3)%5-2,2,2,
+            dark?"#c4b5ec":"#fff2bb");
+        }
+        for(let i=0;i<2;i++){
+          rect(37+i*105+(tick+i*3)%23,34+i*5+(tick+i)%3-1,1,1,
+            dark?"#a0b7ce":"#ffffff");
         }
       }
-      // Tiny moving highlights mark the mature waterfall without repainting it.
-      if (g > .6) {
-        for (let i = 0; i < 3; i++) {
-          const y = 84 + ((t * 6 + i * 7) % 15);
-          rect(85 + (i % 2), y, 1, 2, "#d8f5ff");
-        }
-      }
+      if(dark)[[77,146],[127,114],[163,124],[111,153]].forEach(([x,y],i)=>{
+        rect(x+(tick+i)%3-1,y+(tick+2*i)%3-1,1,1,
+          (tick+i)%3?"#ffe98b":"#8d8d53");
+      });
+      ctx.restore();
+      livingWaterDetails("nature", t, growth);
     }
     if (world === "fantasy") {
       const rand = random(1042);
@@ -559,7 +573,40 @@
         rect(x, 13 + Math.sin(t * 2) * 3, 6, 1, "#fff2d7");
         rect(x - 5, 14 + Math.sin(t * 2) * 3, 5, 1, "#d7b8f6");
       }
+      livingWaterDetails("fantasy",t);
     }
+    if(world==="city")livingWaterDetails("city",t);
+  }
+
+  function livingWaterDetails(world,t,growth=1){
+    const tick=Math.floor(t*1000/1400);
+    if(world==="nature"&&growth<.3)return;
+    const ripples={
+      nature:[[176,113],[186,137]],city:[[174,195],[177,202],[181,189]],
+      fantasy:[[112,130],[154,127]],forest:[[104,210],[140,219]]
+    };
+    const falls={
+      nature:[[189,174],[194,188]],city:[[181,161]],
+      fantasy:[[131,162],[131,188],[128,209]],
+      forest:[[120,137],[125,164],[121,185]]
+    };
+    ctx.save();ctx.scale(.5,.5);
+    if(world==="aquarium"){
+      [[75,110],[103,169],[158,142],[184,94],[123,195],[52,137]].forEach(([x,y],i)=>{
+        rect(x+(tick+i)%3-1,y-(tick*2+i*3)%22,i%2?1:2,i%2?1:2,"#c5edfa");
+      });
+      [[105,35],[152,46],[178,63]].forEach(([x,y],i)=>{
+        rect(x+(tick+i*2)%5-2,y,1,1,"#c5edfa");
+      });
+    }else{
+      (ripples[world]||[]).forEach(([x,y],i)=>{
+        rect(x+(tick+i*2)%5-2,y+(tick+i)%2,2,2,"#c5edfa");
+      });
+      if(world!=="nature"||growth>=.55)(falls[world]||[]).forEach(([x,y],i)=>{
+        rect(x,y+(tick+i*3)%6,1,1,"#b5f5fc");
+      });
+    }
+    ctx.restore();
   }
 
   function sceneStats() {
