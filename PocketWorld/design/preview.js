@@ -11,7 +11,7 @@
   const assetImages = {};
   for (const world of ["city", "forest", "aquarium", "nature", "hybrid", "fantasy"]) {
     const pair = {};
-    for (const stage of ["young", "mature"]) {
+    for (const stage of (world === "hybrid" ? ["young", "mid", "mature"] : ["young", "mature"])) {
       const picture = new Image();
       picture.onload = () => drawScene(animatedSeconds);
       picture.src = `assets/${world}-${stage}.png`;
@@ -93,14 +93,15 @@
       ]
     },
     hybrid: {
-      name: "共生の世界", description: "森と村が一緒に育つ、やさしい小さな暮らし。",
+      name: "共生の世界", description: "段々村から、大樹と湖上へ。ひとつの集落がゆっくり育つ。",
       labels: ["家", "木と草"], events: [
-        [0, "森のそばに一軒の家が建ちました。"],
-        [1, "住民が庭に新しい木を植えました。"],
+        [0, "草原に小屋が一軒建ち、2人が暮らし始めました。"],
+        [1, "住民が段々畑を耕し始めました。"],
         [3, "小川に木の橋が架かりました。"],
-        [7, "森の動物が村を訪れました。"],
-        [14, "家々の屋根に緑が広がりました。"],
-        [30, "村と森がひとつの景色になりました。"]
+        [7, "丘に新しい家と畑が増えました。"],
+        [10, "段々村ができあがり、大樹が大きく育ちました。"],
+        [20, "大樹の枝に家ができ、湖畔にも工事が始まりました。"],
+        [30, "樹上と湖上へ広がり、自然と文明が共生する村になりました。"]
       ]
     },
     fantasy: {
@@ -128,7 +129,7 @@
     return [1 + houseMilestones.filter(mark => minutes >= mark).length,
       2 + (minutes <= 180 ? Math.floor(minutes / 70) : 2 + Math.floor(minutes / 1440))];
   }
-  function tinyPeople(count, seconds) {
+  function tinyPeople(count, seconds, isHybrid = false) {
     // The enclosing illustration layer uses a 120x120 working space.
     // Undo that scale: each human is exactly 1x3 native LCD pixels.
     ctx.save();ctx.scale(.5,.5);
@@ -136,8 +137,8 @@
     const shirts=["#1c3746","#bc3c36","#36435b","#8b3554"];
     for(let i=0;i<Math.min(18,count);i++){
       const phase=(tick+i*7)%24,step=phase<12?phase:24-phase;
-      const x=93+(i*19)%45+step;
-      const y=157+(i*29)%49+(Math.floor(tick/5)+i)%3;
+      const x=(isHybrid ? 40+(i*17)%50 : 93+(i*19)%45)+step;
+      const y=(isHybrid ? 108+(i*23)%56 : 157+(i*29)%49)+(Math.floor(tick/5)+i)%3;
       rect(x,y,1,1,"#ffdeb3");rect(x,y+1,1,1,shirts[i%shirts.length]);rect(x,y+2,1,1,"#20252b");
     }
     ctx.restore();
@@ -448,13 +449,15 @@
     ctx.beginPath(); ctx.arc(120, 120, 119, 0, Math.PI * 2); ctx.clip();
     const g = growth();
     const pair = assetImages[selected];
-    if (pair.young.complete && pair.young.naturalWidth && pair.mature.complete && pair.mature.naturalWidth) {
-      // A stable scene at both ends of the timeline; gradual painterly dissolve in between.
-      ctx.drawImage(pair.young, 0, 0, 240, 240);
-      ctx.globalAlpha = selected === "city"
-        ? (cityNumbers()[0]-1)/houseMilestones.length
+    const early = selected === "hybrid" && elapsedDays >= 10 ? pair.mid : pair.young;
+    const late = selected === "hybrid" && elapsedDays < 10 ? pair.mid : pair.mature;
+    if (early.complete && early.naturalWidth && late.complete && late.naturalWidth) {
+      // Hybrid uses three matched backgrounds; only two are blended per frame.
+      ctx.drawImage(early, 0, 0, 240, 240);
+      ctx.globalAlpha = selected === "city" ? (cityNumbers()[0]-1)/houseMilestones.length
+        : selected === "hybrid" ? (elapsedDays < 10 ? elapsedDays / 10 : (elapsedDays - 10) / 20)
         : limit(elapsedDays / 30, 0, 1);
-      ctx.drawImage(pair.mature, 0, 0, 240, 240);
+      ctx.drawImage(late, 0, 0, 240, 240);
       ctx.globalAlpha = 1;
       if (night() && selected !== "fantasy" && selected !== "aquarium") {
         rect(0, 0, 240, 240, "#0b1e5360");
@@ -483,8 +486,24 @@
   function livingDetails(world, g, t) {
     // Details deliberately stay tiny; the painted backgrounds are the stars.
     if (world === "city" || world === "hybrid") {
-      tinyPeople(world === "city" ? cityNumbers()[1] : Math.floor(g*7),t);
-      if (world === "hybrid" && g > .3) rabbit(83, 95, t);
+      tinyPeople(world === "city" ? cityNumbers()[1] : 2 + Math.floor(g * 9), t, world === "hybrid");
+      if (world === "hybrid" && g > .3) rabbit(46, 68, t);
+    }
+    if (world === "hybrid") {
+      // drawScene() is scaled by 2; undo that to align with native 240px LCD
+      // landmarks in round_screen.hybrid_ambient_particles().
+      const tick=Math.floor(t*1000/1400);
+      ctx.save();ctx.scale(.5,.5);
+      [[54,45],[72,51],[84,61]].forEach(([x,y],i)=>{
+        rect(x+((Math.floor(tick/4)+i)%3-1),y,2,2,night()?"#30463c":"#acd9a0");
+      });
+      [[150,161],[177,169],[190,183],[165,197]].forEach(([x,y],i)=>{
+        rect(x+(tick+2*i)%3-1,y+(tick+i)%2,2,2,night()?"#43778b":"#c5edfa");
+      });
+      [[132,119],[140,138]].forEach(([x,y],i)=>{
+        rect(x,y+(tick+i*3)%3,1,1,night()?"#3d6b9a":"#b5f5fc");
+      });
+      ctx.restore();
     }
     if (world === "forest") {
       if (g > .1) rabbit(70 + Math.sin(t * .45) * 5, 90, t);
@@ -495,6 +514,7 @@
           if (Math.sin(t * 2.4 + i * 2) > .42) rect(x, y + Math.sin(t + i) * 2, 1, 2, "#fff3a8");
         }
       }
+      livingWaterDetails("forest", t);
     }
     if (world === "aquarium") {
       const count = 1 + Math.floor(g * 4);
@@ -509,13 +529,36 @@
         const y = (105 + i * 27 - t * (2 + i % 4) + 2400) % 117;
         bubble(x, y, 1 + i % 2);
       }
+      livingWaterDetails("aquarium", t);
     }
     if (world === "nature") {
-      for (let i = 0; i < 2 + Math.floor(g * 3); i++) {
-        const x = 18 + ((i * 29 + t * (1.5 + i * .3)) % 85);
-        const y = 20 + i * 8 + Math.sin(t * 2 + i) * 3;
-        rect(x, y, 2, 1, "#fff8db"); rect(x + 2, y - 1, 2, 1, "#bfd9e9");
+      // Physical LCD pixels; growth is the image cross-fade, not population.
+      const tick=Math.floor(t*1000/1400),growth=limit(elapsedDays/30,0,1);
+      const dark=night();
+      ctx.save();ctx.scale(.5,.5);
+      rect(111+Math.floor(tick/4)%3-1,66,1,1,dark?"#4b773c":"#c2dd58");
+      if(growth>=.2){
+        [[68,54],[103,39],[149,69]].forEach(([x,y],i)=>{
+          rect(x+(Math.floor(tick/4)+i)%3-1,y,2,2,dark?"#4b773c":"#c2dd58");
+        });
+        [[67,70],[97,75],[138,84]].forEach(([x,y],i)=>{
+          rect(x+(tick+i)%7-3,y+(tick+i*7)%19,1,1,dark?"#4b773c":"#c2dd58");
+        });
+        for(let i=0;i<3;i++){
+          rect(58+i*40+(tick+i*5)%19,116+i*8+(tick+i*3)%5-2,2,2,
+            dark?"#c4b5ec":"#fff2bb");
+        }
+        for(let i=0;i<2;i++){
+          rect(37+i*105+(tick+i*3)%23,34+i*5+(tick+i)%3-1,1,1,
+            dark?"#a0b7ce":"#ffffff");
+        }
       }
+      if(dark)[[77,146],[127,114],[163,124],[111,153]].forEach(([x,y],i)=>{
+        rect(x+(tick+i)%3-1,y+(tick+2*i)%3-1,1,1,
+          (tick+i)%3?"#ffe98b":"#8d8d53");
+      });
+      ctx.restore();
+      livingWaterDetails("nature", t, growth);
     }
     if (world === "fantasy") {
       const rand = random(1042);
@@ -530,7 +573,40 @@
         rect(x, 13 + Math.sin(t * 2) * 3, 6, 1, "#fff2d7");
         rect(x - 5, 14 + Math.sin(t * 2) * 3, 5, 1, "#d7b8f6");
       }
+      livingWaterDetails("fantasy",t);
     }
+    if(world==="city")livingWaterDetails("city",t);
+  }
+
+  function livingWaterDetails(world,t,growth=1){
+    const tick=Math.floor(t*1000/1400);
+    if(world==="nature"&&growth<.3)return;
+    const ripples={
+      nature:[[176,113],[186,137]],city:[[174,195],[177,202],[181,189]],
+      fantasy:[[112,130],[154,127]],forest:[[104,210],[140,219]]
+    };
+    const falls={
+      nature:[[189,174],[194,188]],city:[[181,161]],
+      fantasy:[[131,162],[131,188],[128,209]],
+      forest:[[120,137],[125,164],[121,185]]
+    };
+    ctx.save();ctx.scale(.5,.5);
+    if(world==="aquarium"){
+      [[75,110],[103,169],[158,142],[184,94],[123,195],[52,137]].forEach(([x,y],i)=>{
+        rect(x+(tick+i)%3-1,y-(tick*2+i*3)%22,i%2?1:2,i%2?1:2,"#c5edfa");
+      });
+      [[105,35],[152,46],[178,63]].forEach(([x,y],i)=>{
+        rect(x+(tick+i*2)%5-2,y,1,1,"#c5edfa");
+      });
+    }else{
+      (ripples[world]||[]).forEach(([x,y],i)=>{
+        rect(x+(tick+i*2)%5-2,y+(tick+i)%2,2,2,"#c5edfa");
+      });
+      if(world!=="nature"||growth>=.55)(falls[world]||[]).forEach(([x,y],i)=>{
+        rect(x,y+(tick+i*3)%6,1,1,"#b5f5fc");
+      });
+    }
+    ctx.restore();
   }
 
   function sceneStats() {

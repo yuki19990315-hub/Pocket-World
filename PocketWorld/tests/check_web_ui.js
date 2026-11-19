@@ -43,7 +43,7 @@ async function runPreview(world, area, liveState = false, illustrated = false) {
   const smallPixels = [];
   const paintColors = [];
   const context = {
-    clearRect() {}, save() {}, restore() {}, beginPath() {}, arc() {}, clip() {},
+    clearRect() {}, save() {}, restore() {}, beginPath() {}, arc() {}, clip() {}, fill() {}, ellipse() {},
     translate() { translated += 1; }, scale() {}, moveTo() {}, lineTo() {}, stroke() {},
     fillRect(x, y, width, height) {
       drawn += 1;
@@ -92,8 +92,24 @@ async function runPreview(world, area, liveState = false, illustrated = false) {
   frame(1200);
   assert.ok(illustrated ? artworkDrawn > 0 : drawn > 50,
     'canvas draws the illustration or substantial procedural scene');
+  if (illustrated) {
+    if (world === 'nature') {
+      assert.ok(paintColors.includes('#c2dd58'), 'sapling sways at birth');
+      assert.ok(!paintColors.includes('#c5edfa'), 'meadow starts without blue water overlay');
+    } else {
+      assert.ok(paintColors.includes(area === 'deepsea' ? '#869bd1' : '#c5edfa'),
+        `${world}/${area}: moving water is painted on the matching illustration`);
+    }
+    const firstPixels = JSON.stringify(smallPixels);
+    smallPixels.length = 0;
+    frame(7200);
+    assert.notEqual(JSON.stringify(smallPixels), firstPixels,
+      `${world}/${area}: water or ambient details must change native pixel positions`);
+  }
   if (illustrated && world === 'city') {
-    assert.equal(smallPixels.length, 6, 'two 1x3 pedestrians use six native pixels');
+    assert.equal(smallPixels.length, 7,
+      'two 1x3 pedestrians and one 1px waterfall glint use native pixels');
+    assert.ok(paintColors.includes('#c5edfa'), 'canal water ripples animate over the art');
     assert.match(nodes.get('stats').innerHTML, /<strong>2<\/strong><em>人<\/em>/);
     assert.match(nodes.get('stats').innerHTML, /<strong>1<\/strong><em>軒<\/em>/);
     paintColors.length = 0;
@@ -136,6 +152,11 @@ async function runPreview(world, area, liveState = false, illustrated = false) {
     ['aquarium', 'ocean'], ['aquarium', 'deepsea'],
   ]) await runPreview(world, area);
   await runPreview('city', 'river', false, true);
+  for (const [world, area] of [
+    ['nature', 'river'], ['forest', 'river'], ['fantasy', 'river'],
+    ['hybrid', 'river'], ['aquarium', 'river'],
+    ['aquarium', 'ocean'], ['aquarium', 'deepsea'],
+  ]) await runPreview(world, area, false, true);
   await runPreview('aquarium', 'deepsea', true);
   process.stdout.write('Pocket World UI: scene/lock/tiny resident smoke tests passed\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

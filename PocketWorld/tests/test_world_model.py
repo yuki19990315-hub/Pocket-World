@@ -19,6 +19,20 @@ class TestPocketWorld(unittest.TestCase):
         self.assertGreater(city["residents"], 2)
         self.assertEqual(PocketWorld(engine.persistable()).worlds["city"], city)
 
+    def test_hybrid_grows_from_one_cottage_without_losing_old_saves(self):
+        engine = PocketWorld()
+        hybrid = engine.worlds["hybrid"]
+        self.assertEqual((hybrid["houses"], hybrid["residents"]), (1, 2))
+        engine.advance(180 * 60)
+        self.assertEqual(hybrid["houses"], 2)
+        self.assertGreater(hybrid["residents"], 2)
+        restored = PocketWorld({"worlds": {"hybrid": {"houses": 0,
+                                                      "residents": 0,
+                                                      "minutes": 42}}})
+        self.assertEqual(restored.worlds["hybrid"]["minutes"], 42)
+        self.assertEqual((restored.worlds["hybrid"]["houses"],
+                          restored.worlds["hybrid"]["residents"]), (1, 2))
+
     def test_six_worlds_exist(self):
         engine = PocketWorld()
         self.assertEqual(set(engine.worlds), {"nature", "city", "hybrid", "fantasy",

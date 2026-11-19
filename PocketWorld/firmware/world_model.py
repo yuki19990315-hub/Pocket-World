@@ -78,8 +78,8 @@ class PocketWorld:
                 "remainder": self._int(old, "remainder", 0),
                 "plants": self._int(old, "plants", 10 if ident != "city" else 4),
                 "wildlife": self._int(old, "wildlife", 2 if ident != "city" else 0),
-                "residents": self._int(old, "residents", 2 if ident == "city" else 0),
-                "houses": self._int(old, "houses", 1 if ident == "city" else 0),
+                "residents": self._int(old, "residents", 2 if ident in ("city", "hybrid") else 0),
+                "houses": self._int(old, "houses", 1 if ident in ("city", "hybrid") else 0),
                 "magic": self._int(old, "magic", 1 if ident == "fantasy" else 0),
                 "sound_activity": _clamp(self._int(old, "sound_activity", 0), 0, 19),
                 "sound_projects": _clamp(self._int(old, "sound_projects", 0), 0, 2),
@@ -96,6 +96,11 @@ class PocketWorld:
                             isinstance(item.get("minute"), int) and
                             isinstance(item.get("message"), str)][-MAX_JOURNAL:],
             }
+            if ident == "hybrid":
+                # Older hybrid worlds were born empty; give their saved village
+                # the same starter cottage and two residents without resetting age.
+                self.worlds[ident]["houses"] = max(1, self.worlds[ident]["houses"])
+                self.worlds[ident]["residents"] = max(2, self.worlds[ident]["residents"])
             if ident == "aquarium":
                 saved_areas = old.get("water_areas", {})
                 if not isinstance(saved_areas, dict):
@@ -265,6 +270,10 @@ class PocketWorld:
             self._event(world, "新しい建物が完成しました")
         if ident == "hybrid" and _growth_due(n, 110, 4320):
             self._event(world, "森と街をつなぐ道ができました")
+        if ident == "hybrid" and n == 10 * 1440:
+            self._event(world, "段々村が育ち、大樹が村を見守っています")
+        if ident == "hybrid" and n == 20 * 1440:
+            self._event(world, "大樹の枝と湖畔に新しい家が建ち始めました")
         if ident == "fantasy" and _growth_due(n, 55, 720):
             world["magic"] = min(80, world["magic"] + 1)
         if n % 90 == 0:

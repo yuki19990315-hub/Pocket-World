@@ -55,7 +55,7 @@ def configure_wifi():
     import network
     ap = network.WLAN(network.AP_IF)
     ap.active(True)
-    ap.config(essid=settings.AP_SSID, password=settings.AP_PASSWORD)
+    ap.config(essid=settings.AP_SSID, password=settings.AP_PASSWORD, security=3)
     print("Phone AP:", settings.AP_SSID, "address:", ap.ifconfig()[0])
 
     if settings.STA_SSID:
