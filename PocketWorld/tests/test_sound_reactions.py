@@ -35,11 +35,11 @@ class TestSoundReactions(unittest.TestCase):
         for _ in range(4):
             engine.observe_sound(85)
         self.assertEqual(engine.worlds["city"]["residents"], 3)
-        self.assertEqual(engine.worlds["hybrid"]["residents"], 0)
+        self.assertEqual(engine.worlds["hybrid"]["residents"], 2)
         for _ in range(8):
             engine.observe_sound(85)
         self.assertEqual(engine.worlds["city"]["houses"], 2)
-        self.assertEqual(engine.worlds["hybrid"]["residents"], 2)
+        self.assertEqual(engine.worlds["hybrid"]["residents"], 4)
 
     def test_loud_audio_can_create_rare_magic_event(self):
         engine = PocketWorld()

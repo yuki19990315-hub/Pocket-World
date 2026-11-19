@@ -6,7 +6,8 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
 from round_screen import (BatteryGauge, CST816Touch, FRAME_SIZE, GC9A01,
-                          RoundScreen, ambience_row, blend_row, town_art_alpha, town_people)
+                          RoundScreen, ambience_row, blend_row, hybrid_art_frames,
+                          hybrid_people, town_art_alpha, town_people)
 
 
 class Pin:
@@ -168,6 +169,50 @@ class RoundScreenTest(unittest.TestCase):
                 self.assertTrue(screen.animate(180, world=world))
                 self.assertEqual(len(screen.people), 4)
                 self.assertEqual(driver.rows, 240 + 6 + 6)
+            finally:
+                os.chdir(previous)
+
+    def test_hybrid_streams_three_village_ages_and_walkers_stay_on_terraces(self):
+        self.assertEqual(hybrid_art_frames(0),
+                         ("assets/hybrid-young.dat", "assets/hybrid-mid.dat", 0))
+        self.assertEqual(hybrid_art_frames(10 * 1440),
+                         ("assets/hybrid-mid.dat", "assets/hybrid-mature.dat", 0))
+        self.assertEqual(hybrid_art_frames(30 * 1440),
+                         ("assets/hybrid-mid.dat", "assets/hybrid-mature.dat", 255))
+        self.assertEqual(len(hybrid_people(2, 1)), 2)
+        self.assertTrue(all(35 <= x <= 115 and 105 <= y <= 175
+                            for x, y in hybrid_people(18, 2)))
+        previous = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                os.mkdir("assets")
+                for stage, color in (("young", b"\xf8\x00"),
+                                     ("mid", b"\x07\xe0"),
+                                     ("mature", b"\x00\x1f")):
+                    with open("assets/hybrid-" + stage + ".dat", "wb") as output:
+                        output.write(color * (FRAME_SIZE // 2))
+
+                class Capture(Display):
+                    def __init__(self):
+                        super().__init__()
+                        self.last_frame_first_pixel = None
+
+                    def write_pixels(self, chunk):
+                        if self.rows % 240 == 0:
+                            self.last_frame_first_pixel = bytes(chunk[:2])
+                        super().write_pixels(chunk)
+
+                driver = Capture()
+                screen = RoundScreen(driver)
+                screen.choose("hybrid")
+                for minute, expected in ((0, b"\xf8\x00"),
+                                         (10 * 1440, b"\x07\xe0"),
+                                         (30 * 1440, b"\x00\x1f")):
+                    self.assertTrue(screen.show(minute, world={"residents": 2, "houses": 1}))
+                    self.assertEqual(driver.last_frame_first_pixel, expected)
+                self.assertTrue(screen.animate(30 * 1440, world={"residents": 2}))
+                self.assertEqual(len(screen.people), 2)
             finally:
                 os.chdir(previous)
 

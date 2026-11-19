@@ -101,7 +101,7 @@
   const defaults = {
     nature: {name:"自然の世界",label:"Island / Terrarium",seed:13579,plants:10,wildlife:2,residents:0,houses:0,magic:0},
     city: {name:"街の世界",label:"Town / Civilization",seed:24681,plants:4,wildlife:0,residents:2,houses:1,magic:0},
-    hybrid: {name:"自然＋文明",label:"Harmony / Coexistence",seed:35791,plants:10,wildlife:2,residents:0,houses:0,magic:0},
+    hybrid: {name:"自然＋文明",label:"Harmony / Coexistence",seed:35791,plants:10,wildlife:2,residents:2,houses:1,magic:0},
     fantasy: {name:"ファンタジー",label:"Arcana / Fantasy",seed:46801,plants:10,wildlife:2,residents:0,houses:0,magic:1},
     forest: {name:"森のテラリウム",label:"Woodland / Living Forest",seed:57913,plants:10,wildlife:2,residents:0,houses:0,magic:0},
     aquarium: {name:"水の世界",label:"Aquarium / Three Waters",seed:68021,plants:6,wildlife:3,residents:0,houses:0,magic:0}
@@ -139,7 +139,7 @@
   const worldArt = {};
   if(typeof Image!=="undefined")artNames.forEach(name=>{
     worldArt[name]={};
-    ["young","mature"].forEach(phase=>{
+    (name==="hybrid"?["young","mid","mature"]:["young","mature"]).forEach(phase=>{
       const img=new Image();
       img.src=assetBase+name+"-"+phase+".png";
       worldArt[name][phase]=img;
@@ -181,11 +181,12 @@
   function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h);}
   function tree(x,y,p,size=1){const k=size;rect(x-2*k,y+4*k,4*k,8*k,p.trunk);rect(x-8*k,y-8*k,16*k,12*k,p.trees);rect(x-5*k,y-12*k,10*k,6*k,p.shadow);rect(x-6*k,y-8*k,5*k,4*k,p.ground);}
   function house(x,y,p,type){rect(x-10,y-5,20,18,type==="fantasy"?"#c4a6c0":"#e3cda0");rect(x-12,y-10,24,7,p.roof);rect(x-7,y+1,4,4,"#688a99");rect(x+3,y+1,4,4,"#688a99");rect(x-2,y+5,5,8,"#715346");rect(x-15,y+13,30,3,p.shadow);}
-  function tinyResidentPositions(count,t){
+  function tinyResidentPositions(count,t,hybrid=false){
     const tick=Math.floor(t/1400),people=[];
     for(let i=0;i<Math.min(18,Math.max(0,count|0));i++){
       const phase=(tick+i*7)%24,step=phase<12?phase:24-phase;
-      people.push([93+(i*19)%45+step,157+(i*29)%49+(Math.floor(tick/5)+i)%3]);
+      people.push([(hybrid?40+(i*17)%50:93+(i*19)%45)+step,
+        (hybrid?108+(i*23)%56:157+(i*29)%49)+(Math.floor(tick/5)+i)%3]);
     }
     return people;
   }
@@ -193,7 +194,7 @@
     // Draw on the native 240x240 pixel grid, then enlarge with no smoothing.
     const clothes=["#1c3746","#bc3c36","#36435b","#8b3554"];
     ctx.save();ctx.scale(1.5,1.5);
-    tinyResidentPositions(world.residents,t).forEach(([x,y],i)=>{
+    tinyResidentPositions(world.residents,t,selected==="hybrid").forEach(([x,y],i)=>{
       rect(x,y,1,1,"#ffdeb3");      // head
       rect(x,y+1,1,1,clothes[i%clothes.length]); // torso
       rect(x,y+2,1,1,"#20252b");    // feet
@@ -319,16 +320,20 @@
   function illustratedScene(world,t){
     const artId=selected==="aquarium"?(waterArea==="ocean"?"aquarium":waterArea):selected;
     const pair=worldArt[artId];
-    if(!pair || !pair.young.complete || !pair.mature.complete ||
-       !pair.young.naturalWidth || !pair.mature.naturalWidth)return false;
-    const progress=selected==="city"?cityArtProgress(world):Math.min(1,Math.max(0,(world.minutes||0)/(30*1440)));
+    if(!pair)return false;
+    const minutes=world.minutes||0,early=selected==="hybrid"&&minutes>=10*1440?pair.mid:pair.young;
+    const late=selected==="hybrid"&&minutes<10*1440?pair.mid:pair.mature;
+    if(!early.complete || !late.complete || !early.naturalWidth || !late.naturalWidth)return false;
+    const progress=selected==="city"?cityArtProgress(world):selected==="hybrid"
+      ?Math.min(1,Math.max(0,minutes<10*1440?minutes/(10*1440):(minutes-10*1440)/(20*1440)))
+      :Math.min(1,Math.max(0,minutes/(30*1440)));
     const seed=world.seed||13579,water=selected==="aquarium";
     ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
     ctx.save();
     if(motionState.connected)ctx.translate(motionState.tilt_x*7,motionState.tilt_y*7);
     if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
-    ctx.drawImage(pair.young,0,0,360,360);
-    if(progress>0){ctx.globalAlpha=progress;ctx.drawImage(pair.mature,0,0,360,360);ctx.globalAlpha=1;}
+    ctx.drawImage(early,0,0,360,360);
+    if(progress>0){ctx.globalAlpha=progress;ctx.drawImage(late,0,0,360,360);ctx.globalAlpha=1;}
     // A small amount of real motion animates the richly illustrated scenery.
     if(water){
       const area=(world.water_areas||{})[waterArea]||{};

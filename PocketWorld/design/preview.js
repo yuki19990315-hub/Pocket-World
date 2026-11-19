@@ -11,7 +11,7 @@
   const assetImages = {};
   for (const world of ["city", "forest", "aquarium", "nature", "hybrid", "fantasy"]) {
     const pair = {};
-    for (const stage of ["young", "mature"]) {
+    for (const stage of (world === "hybrid" ? ["young", "mid", "mature"] : ["young", "mature"])) {
       const picture = new Image();
       picture.onload = () => drawScene(animatedSeconds);
       picture.src = `assets/${world}-${stage}.png`;
@@ -93,14 +93,15 @@
       ]
     },
     hybrid: {
-      name: "共生の世界", description: "森と村が一緒に育つ、やさしい小さな暮らし。",
+      name: "共生の世界", description: "段々村から、大樹と湖上へ。ひとつの集落がゆっくり育つ。",
       labels: ["家", "木と草"], events: [
-        [0, "森のそばに一軒の家が建ちました。"],
-        [1, "住民が庭に新しい木を植えました。"],
+        [0, "草原に小屋が一軒建ち、2人が暮らし始めました。"],
+        [1, "住民が段々畑を耕し始めました。"],
         [3, "小川に木の橋が架かりました。"],
-        [7, "森の動物が村を訪れました。"],
-        [14, "家々の屋根に緑が広がりました。"],
-        [30, "村と森がひとつの景色になりました。"]
+        [7, "丘に新しい家と畑が増えました。"],
+        [10, "段々村ができあがり、大樹が大きく育ちました。"],
+        [20, "大樹の枝に家ができ、湖畔にも工事が始まりました。"],
+        [30, "樹上と湖上へ広がり、自然と文明が共生する村になりました。"]
       ]
     },
     fantasy: {
@@ -128,7 +129,7 @@
     return [1 + houseMilestones.filter(mark => minutes >= mark).length,
       2 + (minutes <= 180 ? Math.floor(minutes / 70) : 2 + Math.floor(minutes / 1440))];
   }
-  function tinyPeople(count, seconds) {
+  function tinyPeople(count, seconds, isHybrid = false) {
     // The enclosing illustration layer uses a 120x120 working space.
     // Undo that scale: each human is exactly 1x3 native LCD pixels.
     ctx.save();ctx.scale(.5,.5);
@@ -136,8 +137,8 @@
     const shirts=["#1c3746","#bc3c36","#36435b","#8b3554"];
     for(let i=0;i<Math.min(18,count);i++){
       const phase=(tick+i*7)%24,step=phase<12?phase:24-phase;
-      const x=93+(i*19)%45+step;
-      const y=157+(i*29)%49+(Math.floor(tick/5)+i)%3;
+      const x=(isHybrid ? 40+(i*17)%50 : 93+(i*19)%45)+step;
+      const y=(isHybrid ? 108+(i*23)%56 : 157+(i*29)%49)+(Math.floor(tick/5)+i)%3;
       rect(x,y,1,1,"#ffdeb3");rect(x,y+1,1,1,shirts[i%shirts.length]);rect(x,y+2,1,1,"#20252b");
     }
     ctx.restore();
@@ -448,13 +449,15 @@
     ctx.beginPath(); ctx.arc(120, 120, 119, 0, Math.PI * 2); ctx.clip();
     const g = growth();
     const pair = assetImages[selected];
-    if (pair.young.complete && pair.young.naturalWidth && pair.mature.complete && pair.mature.naturalWidth) {
-      // A stable scene at both ends of the timeline; gradual painterly dissolve in between.
-      ctx.drawImage(pair.young, 0, 0, 240, 240);
-      ctx.globalAlpha = selected === "city"
-        ? (cityNumbers()[0]-1)/houseMilestones.length
+    const early = selected === "hybrid" && elapsedDays >= 10 ? pair.mid : pair.young;
+    const late = selected === "hybrid" && elapsedDays < 10 ? pair.mid : pair.mature;
+    if (early.complete && early.naturalWidth && late.complete && late.naturalWidth) {
+      // Hybrid uses three matched backgrounds; only two are blended per frame.
+      ctx.drawImage(early, 0, 0, 240, 240);
+      ctx.globalAlpha = selected === "city" ? (cityNumbers()[0]-1)/houseMilestones.length
+        : selected === "hybrid" ? (elapsedDays < 10 ? elapsedDays / 10 : (elapsedDays - 10) / 20)
         : limit(elapsedDays / 30, 0, 1);
-      ctx.drawImage(pair.mature, 0, 0, 240, 240);
+      ctx.drawImage(late, 0, 0, 240, 240);
       ctx.globalAlpha = 1;
       if (night() && selected !== "fantasy" && selected !== "aquarium") {
         rect(0, 0, 240, 240, "#0b1e5360");
@@ -483,7 +486,7 @@
   function livingDetails(world, g, t) {
     // Details deliberately stay tiny; the painted backgrounds are the stars.
     if (world === "city" || world === "hybrid") {
-      tinyPeople(world === "city" ? cityNumbers()[1] : Math.floor(g*7),t);
+      tinyPeople(world === "city" ? cityNumbers()[1] : 2 + Math.floor(g * 9), t, world === "hybrid");
       if (world === "hybrid" && g > .3) rabbit(83, 95, t);
     }
     if (world === "forest") {
@@ -511,10 +514,20 @@
       }
     }
     if (world === "nature") {
-      for (let i = 0; i < 2 + Math.floor(g * 3); i++) {
-        const x = 18 + ((i * 29 + t * (1.5 + i * .3)) % 85);
-        const y = 20 + i * 8 + Math.sin(t * 2 + i) * 3;
-        rect(x, y, 2, 1, "#fff8db"); rect(x + 2, y - 1, 2, 1, "#bfd9e9");
+      // The young image starts as a quiet meadow; wildlife arrives as it grows.
+      if (g > .2) {
+        for (let i = 0; i < 1 + Math.floor(g * 3); i++) {
+          const x = 18 + ((i * 29 + t * (1.5 + i * .3)) % 85);
+          const y = 20 + i * 8 + Math.sin(t * 2 + i) * 3;
+          rect(x, y, 2, 1, "#fff8db"); rect(x + 2, y - 1, 2, 1, "#bfd9e9");
+        }
+      }
+      // Tiny moving highlights mark the mature waterfall without repainting it.
+      if (g > .6) {
+        for (let i = 0; i < 3; i++) {
+          const y = 84 + ((t * 6 + i * 7) % 15);
+          rect(85 + (i % 2), y, 1, 2, "#d8f5ff");
+        }
       }
     }
     if (world === "fantasy") {

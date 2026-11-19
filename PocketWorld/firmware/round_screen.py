@@ -19,6 +19,8 @@ WATER_AREAS = ("river", "ocean", "deepsea")
 FRAME_SIZE = WIDTH * HEIGHT * 2
 TOWN_FULL_HOUSES = 14  # 1 starter home + the 13 scheduled construction events.
 TOWN_VISIBLE_RESIDENTS = 18
+HYBRID_MID_MINUTES = 10 * 1440
+HYBRID_MATURE_MINUTES = 30 * 1440
 
 
 def town_art_alpha(minutes, houses=None):
@@ -32,6 +34,17 @@ def town_art_alpha(minutes, houses=None):
     return min(255, max(0, (int(houses) - 1) * 255 // (TOWN_FULL_HOUSES - 1)))
 
 
+def hybrid_art_frames(minutes):
+    """Three illustrated ages, streamed as two RGB565 frames at a time."""
+    minute = max(0, int(minutes))
+    if minute < HYBRID_MID_MINUTES:
+        return ("assets/hybrid-young.dat", "assets/hybrid-mid.dat",
+                minute * 255 // HYBRID_MID_MINUTES)
+    return ("assets/hybrid-mid.dat", "assets/hybrid-mature.dat",
+            min(255, (minute - HYBRID_MID_MINUTES) * 255 //
+                (HYBRID_MATURE_MINUTES - HYBRID_MID_MINUTES)))
+
+
 def town_people(count, tick, tilt_x=0, tilt_y=0):
     """Deterministic 1x3 pedestrians along the town's winding central path."""
     positions = []
@@ -40,6 +53,18 @@ def town_people(count, tick, tilt_x=0, tilt_y=0):
         step = phase if phase < 12 else 24 - phase
         x = 93 + (i * 19) % 45 + step + tilt_x
         y = 157 + (i * 29) % 49 + ((tick // 5 + i) % 3) + tilt_y
+        positions.append((x, y))
+    return positions
+
+
+def hybrid_people(count, tick, tilt_x=0, tilt_y=0):
+    """Walk on the western terraces; the lake occupies the eastern foreground."""
+    positions = []
+    for i in range(min(TOWN_VISIBLE_RESIDENTS, max(0, int(count)))):
+        phase = (tick + i * 7) % 24
+        step = phase if phase < 12 else 24 - phase
+        x = 40 + (i * 17) % 50 + step + tilt_x
+        y = 108 + (i * 23) % 56 + ((tick // 5 + i) % 3) + tilt_y
         positions.append((x, y))
     return positions
 
@@ -368,14 +393,9 @@ class RoundScreen:
         """Draw once on mode/day changes or scheduled refresh; no frame buffer."""
         if not self.visible:
             return False
-        ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
-            if self.selected == "aquarium" else self.selected
-        early_path = "assets/%s-young.dat" % ident
-        mature_path = "assets/%s-mature.dat" % ident
+        early_path, mature_path, alpha = self._art_frames(minutes, world)
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
-                 if self.selected == "city" else town_art_alpha(minutes))
         with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
             self.driver.window(0, 0, WIDTH, HEIGHT)
             self.driver.start_pixels()
@@ -469,11 +489,14 @@ class RoundScreen:
         if self.visible:
             self.driver.set_brightness(percent)
 
-    def _current_art_paths(self):
+    def _art_frames(self, minutes, world=None):
+        if self.selected == "hybrid":
+            return hybrid_art_frames(minutes)
         ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
             if self.selected == "aquarium" else self.selected
         return ("assets/%s-young.dat" % ident,
-                "assets/%s-mature.dat" % ident)
+                "assets/%s-mature.dat" % ident,
+                town_art_alpha(minutes, world.get("houses") if world and self.selected == "city" else None))
 
     def _restore_patch(self, young, mature, rect, alpha):
         x, y, size, _ = rect
@@ -519,11 +542,9 @@ class RoundScreen:
             if not self.info_frames:
                 self.show(minutes, force=True)
             return True
-        early_path, mature_path = self._current_art_paths()
+        early_path, mature_path, alpha = self._art_frames(minutes, world)
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
-                 if self.selected == "city" else town_art_alpha(minutes))
         with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
             for rect in self.particles:
                 self._restore_patch(early, mature, rect, alpha)
@@ -573,7 +594,8 @@ class RoundScreen:
             self.driver.solid(x, y, size, size, value)
         if self.selected in ("hybrid", "fantasy"):
             count = world.get("residents", 0) if world else 0
-            self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
+            self.people = hybrid_people(count, self.animation_tick, tilt_x, tilt_y) \
+                if self.selected == "hybrid" else town_people(count, self.animation_tick, tilt_x, tilt_y)
             shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
             for i, (x, y) in enumerate(self.people):
                 self.driver.solid(x, y, 1, 1, 0xFFBE)
