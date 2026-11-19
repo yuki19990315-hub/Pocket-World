@@ -19,6 +19,32 @@ WATER_AREAS = ("river", "ocean", "deepsea")
 FRAME_SIZE = WIDTH * HEIGHT * 2
 TOWN_FULL_HOUSES = 14  # 1 starter home + the 13 scheduled construction events.
 TOWN_VISIBLE_RESIDENTS = 18
+HYBRID_MID_MINUTES = 10 * 1440
+HYBRID_MATURE_MINUTES = 30 * 1440
+# Landmark pixels shared by all three matched hybrid backgrounds.
+# These are inside the circular LCD and on the same land/water features.
+HYBRID_LEAVES = ((54, 45), (72, 51), (84, 61))
+HYBRID_LAKE = ((150, 161), (177, 169), (190, 183), (165, 197))
+HYBRID_FALLS = ((132, 119), (140, 138))
+# Landmarks checked against the matching 240x240 young/mature illustrations.
+# Ripples drift sideways; waterfall drops move downward. Aquarium zones are
+# entirely underwater and use rising bubbles instead of surface ripples.
+WATER_RIPPLES = {
+    "nature": ((176, 113), (186, 137)),
+    "city": ((174, 195), (177, 202), (181, 189)),
+    "hybrid": HYBRID_LAKE,
+    "fantasy": ((112, 130), (154, 127)),
+    "forest": ((104, 210), (140, 219)),
+}
+WATER_FALLS = {
+    "nature": ((189, 174), (194, 188)),
+    "city": ((181, 161),),
+    "hybrid": HYBRID_FALLS,
+    "fantasy": ((131, 162), (131, 188), (128, 209)),
+    "forest": ((120, 137), (125, 164), (121, 185)),
+}
+UNDERWATER_BUBBLES = ((75, 110), (103, 169), (158, 142), (184, 94),
+                       (123, 195), (52, 137))
 
 
 def town_art_alpha(minutes, houses=None):
@@ -32,6 +58,17 @@ def town_art_alpha(minutes, houses=None):
     return min(255, max(0, (int(houses) - 1) * 255 // (TOWN_FULL_HOUSES - 1)))
 
 
+def hybrid_art_frames(minutes):
+    """Three illustrated ages, streamed as two RGB565 frames at a time."""
+    minute = max(0, int(minutes))
+    if minute < HYBRID_MID_MINUTES:
+        return ("assets/hybrid-young.dat", "assets/hybrid-mid.dat",
+                minute * 255 // HYBRID_MID_MINUTES)
+    return ("assets/hybrid-mid.dat", "assets/hybrid-mature.dat",
+            min(255, (minute - HYBRID_MID_MINUTES) * 255 //
+                (HYBRID_MATURE_MINUTES - HYBRID_MID_MINUTES)))
+
+
 def town_people(count, tick, tilt_x=0, tilt_y=0):
     """Deterministic 1x3 pedestrians along the town's winding central path."""
     positions = []
@@ -42,6 +79,136 @@ def town_people(count, tick, tilt_x=0, tilt_y=0):
         y = 157 + (i * 29) % 49 + ((tick // 5 + i) % 3) + tilt_y
         positions.append((x, y))
     return positions
+
+
+def hybrid_people(count, tick, tilt_x=0, tilt_y=0):
+    """Walk on the western terraces; the lake occupies the eastern foreground."""
+    positions = []
+    for i in range(min(TOWN_VISIBLE_RESIDENTS, max(0, int(count)))):
+        phase = (tick + i * 7) % 24
+        step = phase if phase < 12 else 24 - phase
+        x = 40 + (i * 17) % 50 + step + tilt_x
+        y = 108 + (i * 23) % 56 + ((tick // 5 + i) % 3) + tilt_y
+        positions.append((x, y))
+    return positions
+
+
+def hybrid_ambient_particles(tick, phase="day", weather="sunny",
+                             tilt_x=0, tilt_y=0, shaking=False):
+    """Subtle leaf sway and water shimmer, without repainting the scenery.
+
+    Each result is (x, y, square size, RGB565). Animate() restores the
+    underlying RGB565 pixels before redrawing the next positions.
+    """
+    if phase == "lights_out":
+        return []
+    windy = weather in ("windy", "rain")
+    pace = 2 if windy else 4
+    bright = phase in ("day", "dawn")
+    leaf_color = 0xB6D4 if bright else 0x3349
+    water_color = 0xD7FE if bright else 0x42B5
+    falls_color = 0xBFFF if bright else 0x3A53
+    if shaking:
+        leaf_color = water_color = falls_color = 0xFFFF
+    particles = []
+    for index, (base_x, base_y) in enumerate(HYBRID_LEAVES):
+        sway = ((tick // pace + index) % 3) - 1
+        particles.append((base_x + sway * (2 if windy else 1) + tilt_x,
+                          base_y + tilt_y, 2, leaf_color))
+    for index, (base_x, base_y) in enumerate(HYBRID_LAKE):
+        shimmer = ((tick + 2 * index) % 3) - 1
+        particles.append((base_x + shimmer + tilt_x,
+                          base_y + (tick + index) % 2 + tilt_y, 2, water_color))
+    for index, (base_x, base_y) in enumerate(HYBRID_FALLS):
+        particles.append((base_x + tilt_x,
+                          base_y + (tick + index * 3) % 3 + tilt_y,
+                          1, falls_color))
+    return particles
+
+
+def water_ambient_particles(art_id, tick, phase="day", weather="sunny",
+                            tilt_x=0, tilt_y=0, shaking=False, growth=1):
+    """Move tiny highlights along the painted water, not over arbitrary land.
+
+    `growth` is the illustrated background cross-fade (0..1). Nature's
+    youngest meadow has a brown stream bed, so blue water emerges gradually.
+    """
+    if phase == "lights_out" or (art_id == "nature" and growth < .3):
+        return []
+    bright = phase in ("day", "dawn")
+    ripple = 0xD7FE if bright else 0x42B5
+    falls = 0xBFFF if bright else 0x3A53
+    if art_id == "deepsea":
+        ripple = 0x6558 if bright else 0x3254
+    if shaking:
+        ripple = falls = 0xFFFF
+    pace = 2 if weather in ("rain", "windy") else 1
+    particles = []
+    if art_id in ("aquarium", "river", "deepsea"):
+        # The whole canvas is water. Rise within six narrow bubble columns.
+        for i, (x, y) in enumerate(UNDERWATER_BUBBLES):
+            particles.append((x + (tick + i) % 3 - 1 + tilt_x,
+                              y - (tick * pace * 2 + i * 3) % 22 + tilt_y,
+                              1 if i % 2 else 2, ripple))
+        for i, (x, y) in enumerate(((105, 35), (152, 46), (178, 63))):
+            particles.append((x + (tick + i * 2) % 5 - 2 + tilt_x,
+                              y + tilt_y, 1, ripple))
+        return particles
+    for i, (x, y) in enumerate(WATER_RIPPLES.get(art_id, ())):
+        particles.append((x + (tick * pace + i * 2) % 5 - 2 + tilt_x,
+                          y + (tick + i) % 2 + tilt_y, 2, ripple))
+    if art_id != "nature" or growth >= .55:
+        for i, (x, y) in enumerate(WATER_FALLS.get(art_id, ())):
+            particles.append((x + tilt_x,
+                              y + (tick * pace + i * 3) % 6 + tilt_y,
+                              1, falls))
+    return particles
+
+
+def nature_ambient_particles(tick, phase="day", weather="sunny",
+                             tilt_x=0, tilt_y=0, shaking=False, growth=1):
+    """Leaves, butterflies, distant birds, fireflies and the growing river."""
+    if phase == "lights_out":
+        return []
+    windy = weather in ("windy", "rain")
+    bright = phase in ("day", "dawn")
+    color_leaf = 0xC706 if bright else 0x4389
+    color_butterfly = 0xFDF1 if bright else 0xB3B7
+    color_bird = 0xFFFF if bright else 0x9D3D
+    if shaking:
+        color_leaf = color_butterfly = color_bird = 0xFFFF
+    # The young illustration contains one small sapling at this coordinate.
+    particles = [(111 + ((tick // (2 if windy else 4)) % 3 - 1) + tilt_x,
+                  66 + tilt_y, 1, color_leaf)]
+    if growth >= .2:
+        for i, (x, y) in enumerate(((68, 54), (103, 39), (149, 69))):
+            sway = (tick // (2 if windy else 4) + i) % 3 - 1
+            particles.append((x + sway * (2 if windy else 1) + tilt_x,
+                              y + tilt_y, 2, color_leaf))
+        for i, (x, y) in enumerate(((67, 70), (97, 75), (138, 84))):
+            # A few leaves float down from the canopy toward the meadow.
+            particles.append((x + (tick * (2 if windy else 1) + i) % 7 - 3 + tilt_x,
+                              y + (tick + i * 7) % 19 + tilt_y,
+                              1, color_leaf))
+        for i in range(3):
+            # Flower-height butterfly tracks stay on the island's grassy top.
+            x = 58 + i * 40 + (tick * (2 if windy else 1) + i * 5) % 19
+            y = 116 + i * 8 + (tick + i * 3) % 5 - 2
+            particles.append((x + tilt_x, y + tilt_y, 2, color_butterfly))
+        for i in range(2):
+            x = 37 + i * 105 + (tick + i * 3) % 23
+            y = 34 + i * 5 + (tick + i) % 3 - 1
+            particles.append((x + tilt_x, y + tilt_y, 1, color_bird))
+    if phase in ("night", "dusk"):
+        for i, (x, y) in enumerate(((77, 146), (127, 114), (163, 124),
+                                    (111, 153))):
+            firefly = 0xFFE0 if (tick + i) % 3 else 0x8B60
+            particles.append((x + (tick + i) % 3 - 1 + tilt_x,
+                              y + (tick + 2 * i) % 3 - 1 + tilt_y,
+                              1, 0xFFFF if shaking else firefly))
+    particles.extend(water_ambient_particles("nature", tick, phase, weather,
+                                              tilt_x, tilt_y, shaking, growth))
+    return particles
 
 
 def blend_row(early, late, alpha):
@@ -368,14 +535,9 @@ class RoundScreen:
         """Draw once on mode/day changes or scheduled refresh; no frame buffer."""
         if not self.visible:
             return False
-        ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
-            if self.selected == "aquarium" else self.selected
-        early_path = "assets/%s-young.dat" % ident
-        mature_path = "assets/%s-mature.dat" % ident
+        early_path, mature_path, alpha = self._art_frames(minutes, world)
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
-                 if self.selected == "city" else town_art_alpha(minutes))
         with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
             self.driver.window(0, 0, WIDTH, HEIGHT)
             self.driver.start_pixels()
@@ -469,11 +631,14 @@ class RoundScreen:
         if self.visible:
             self.driver.set_brightness(percent)
 
-    def _current_art_paths(self):
+    def _art_frames(self, minutes, world=None):
+        if self.selected == "hybrid":
+            return hybrid_art_frames(minutes)
         ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
             if self.selected == "aquarium" else self.selected
         return ("assets/%s-young.dat" % ident,
-                "assets/%s-mature.dat" % ident)
+                "assets/%s-mature.dat" % ident,
+                town_art_alpha(minutes, world.get("houses") if world and self.selected == "city" else None))
 
     def _restore_patch(self, young, mature, rect, alpha):
         x, y, size, _ = rect
@@ -519,11 +684,9 @@ class RoundScreen:
             if not self.info_frames:
                 self.show(minutes, force=True)
             return True
-        early_path, mature_path = self._current_art_paths()
+        early_path, mature_path, alpha = self._art_frames(minutes, world)
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
-                 if self.selected == "city" else town_art_alpha(minutes))
         with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
             for rect in self.particles:
                 self._restore_patch(early, mature, rect, alpha)
@@ -544,7 +707,14 @@ class RoundScreen:
         if self.selected == "city":
             # Actual town population is the source of truth; a visual cap keeps
             # the display legible as the population grows toward 40 residents.
-            self.particles = []
+            self.particles = water_ambient_particles(
+                "city", self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0)
+            for x, y, size, value in self.particles:
+                self.driver.solid(x, y, size, size, value)
+            if self.shake_frames:
+                self.shake_frames -= 1
             count = world.get("residents", 2) if world else 2
             self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
             shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
@@ -556,24 +726,43 @@ class RoundScreen:
                 self._town_lamps(world)
             return True
         self.people = []
-        watery = self.selected == "aquarium"
-        colour = (0xC7DF if watery else 0xFFDF if self.selected == "fantasy"
-                  else 0xF6A4 if self.selected == "forest" else 0xE7B1)
-        if self.shake_frames:
-            colour = 0xFFFF
-            self.shake_frames -= 1
-        # Keep all 4×4 sprites away from circular screen corners.
-        self.particles = [
-            (72 + (i * 31) % 95 + tilt_x,
-             65 + ((i * 43 - self.animation_tick * (4 if watery else 1)) % 125) + tilt_y,
-             4, colour)
-            for i in range(4)
-        ]
+        if self.selected == "hybrid":
+            self.particles = hybrid_ambient_particles(
+                self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0)
+            if self.shake_frames:
+                self.shake_frames -= 1
+        elif self.selected == "nature":
+            self.particles = nature_ambient_particles(
+                self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0, alpha / 255)
+            if self.shake_frames:
+                self.shake_frames -= 1
+        else:
+            art_id = ("aquarium" if self.water_area == "ocean" else self.water_area) \
+                if self.selected == "aquarium" else self.selected
+            self.particles = water_ambient_particles(
+                art_id, self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0, alpha / 255)
+            if self.selected == "fantasy" and self.lighting_phase != "lights_out":
+                # Keep two small drifting magic lights above the island.
+                self.particles.extend([
+                    (53 + (self.animation_tick + i * 5) % 14 + tilt_x,
+                     88 + i * 15 + tilt_y, 2,
+                     0xFFFF if self.shake_frames else 0xFFDF)
+                    for i in range(2)
+                ])
+            if self.shake_frames:
+                self.shake_frames -= 1
         for x, y, size, value in self.particles:
             self.driver.solid(x, y, size, size, value)
         if self.selected in ("hybrid", "fantasy"):
             count = world.get("residents", 0) if world else 0
-            self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
+            self.people = hybrid_people(count, self.animation_tick, tilt_x, tilt_y) \
+                if self.selected == "hybrid" else town_people(count, self.animation_tick, tilt_x, tilt_y)
             shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
             for i, (x, y) in enumerate(self.people):
                 self.driver.solid(x, y, 1, 1, 0xFFBE)

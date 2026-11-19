@@ -6,7 +6,10 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
 from round_screen import (BatteryGauge, CST816Touch, FRAME_SIZE, GC9A01,
-                          RoundScreen, ambience_row, blend_row, town_art_alpha, town_people)
+                          RoundScreen, ambience_row, blend_row, hybrid_art_frames,
+                          hybrid_ambient_particles, hybrid_people,
+                          nature_ambient_particles, water_ambient_particles,
+                          town_art_alpha, town_people)
 
 
 class Pin:
@@ -155,21 +158,135 @@ class RoundScreenTest(unittest.TestCase):
                 self.assertTrue(screen.show(0, world=world))
                 self.assertTrue(screen.animate(0, world=world))
                 self.assertEqual(len(screen.people), 2)
-                self.assertEqual(len(screen.particles), 0)
+                self.assertEqual(len(screen.particles), 4)  # canal + waterfall
                 marks = [call for call in driver.calls if call[0] == "solid"]
-                self.assertEqual(len(marks), 6)
-                for _, (x, y, width, height, color) in marks:
+                self.assertEqual(len(marks), 10)
+                for _, (x, y, width, height, color) in marks[-6:]:
                     self.assertEqual((width, height), (1, 1))
+                previous_patches = sum(p[2] for p in screen.particles)
                 before = screen.people[:]
                 self.assertTrue(screen.animate(0, world=world))
                 self.assertNotEqual(screen.people, before)
-                self.assertEqual(driver.rows, 240 + 6)
+                self.assertEqual(driver.rows, 240 + previous_patches + 6)
                 world["residents"] = 4
                 self.assertTrue(screen.animate(180, world=world))
                 self.assertEqual(len(screen.people), 4)
-                self.assertEqual(driver.rows, 240 + 6 + 6)
+                self.assertEqual(driver.rows, 240 + (previous_patches + 6) * 2)
             finally:
                 os.chdir(previous)
+
+    def test_hybrid_streams_three_village_ages_and_walkers_stay_on_terraces(self):
+        self.assertEqual(hybrid_art_frames(0),
+                         ("assets/hybrid-young.dat", "assets/hybrid-mid.dat", 0))
+        self.assertEqual(hybrid_art_frames(10 * 1440),
+                         ("assets/hybrid-mid.dat", "assets/hybrid-mature.dat", 0))
+        self.assertEqual(hybrid_art_frames(30 * 1440),
+                         ("assets/hybrid-mid.dat", "assets/hybrid-mature.dat", 255))
+        self.assertEqual(len(hybrid_people(2, 1)), 2)
+        self.assertTrue(all(35 <= x <= 115 and 105 <= y <= 175
+                            for x, y in hybrid_people(18, 2)))
+        previous = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                os.mkdir("assets")
+                for stage, color in (("young", b"\xf8\x00"),
+                                     ("mid", b"\x07\xe0"),
+                                     ("mature", b"\x00\x1f")):
+                    with open("assets/hybrid-" + stage + ".dat", "wb") as output:
+                        output.write(color * (FRAME_SIZE // 2))
+
+                class Capture(Display):
+                    def __init__(self):
+                        super().__init__()
+                        self.last_frame_first_pixel = None
+
+                    def write_pixels(self, chunk):
+                        if self.rows % 240 == 0:
+                            self.last_frame_first_pixel = bytes(chunk[:2])
+                        super().write_pixels(chunk)
+
+                driver = Capture()
+                screen = RoundScreen(driver)
+                screen.choose("hybrid")
+                for minute, expected in ((0, b"\xf8\x00"),
+                                         (10 * 1440, b"\x07\xe0"),
+                                         (30 * 1440, b"\x00\x1f")):
+                    self.assertTrue(screen.show(minute, world={"residents": 2, "houses": 1}))
+                    self.assertEqual(driver.last_frame_first_pixel, expected)
+                self.assertTrue(screen.animate(30 * 1440, world={"residents": 2}))
+                self.assertEqual(len(screen.people), 2)
+                previous_particles = screen.particles[:]
+                previous_rows = driver.rows
+                self.assertTrue(screen.animate(30 * 1440, world={"residents": 2}))
+                self.assertEqual(driver.rows - previous_rows,
+                                 sum(particle[2] for particle in previous_particles) + 6)
+            finally:
+                os.chdir(previous)
+
+    def test_hybrid_leaf_and_water_sprites_are_subtle_bounded_and_animated(self):
+        initial = hybrid_ambient_particles(1)
+        moved = hybrid_ambient_particles(6)
+        windy = hybrid_ambient_particles(6, weather="windy")
+        nighttime = hybrid_ambient_particles(6, phase="night")
+        self.assertEqual(len(initial), 9)  # 3 leaves, 4 lake glints, 2 waterfalls
+        self.assertNotEqual([(x, y) for x, y, _, _ in initial],
+                            [(x, y) for x, y, _, _ in moved])
+        self.assertNotEqual([(x, y) for x, y, _, _ in moved],
+                            [(x, y) for x, y, _, _ in windy])
+        self.assertNotEqual(moved[0][3], nighttime[0][3])
+        self.assertEqual(hybrid_ambient_particles(2, phase="lights_out"), [])
+        self.assertTrue(all(color == 0xFFFF for _, _, _, color in
+                            hybrid_ambient_particles(2, shaking=True)))
+        for weather in ("sunny", "windy", "rain"):
+            for x, y, size, _ in hybrid_ambient_particles(
+                    12, weather=weather, tilt_x=8, tilt_y=8):
+                self.assertTrue(0 <= x <= 240-size and 0 <= y <= 240-size)
+                self.assertLess((x + size/2 - 120)**2 + (y + size/2 - 120)**2,
+                                119**2)
+
+    def test_water_motion_tracks_each_painted_scene_and_restores_with_light(self):
+        for art in ("city", "forest", "fantasy", "aquarium", "river", "deepsea"):
+            with self.subTest(art=art):
+                a = water_ambient_particles(art, 1)
+                b = water_ambient_particles(art, 5)
+                self.assertTrue(a)
+                self.assertNotEqual([(x, y) for x, y, _, _ in a],
+                                    [(x, y) for x, y, _, _ in b])
+                self.assertNotEqual(b[0][3], water_ambient_particles(art, 5, phase="night")[0][3])
+                self.assertEqual(water_ambient_particles(art, 5, phase="lights_out"), [])
+                self.assertTrue(all(color == 0xFFFF for _, _, _, color in
+                                    water_ambient_particles(art, 5, shaking=True)))
+                for tilt_x, tilt_y in ((-8, -8), (8, 8)):
+                    for x, y, size, _ in water_ambient_particles(
+                            art, 12, weather="windy", tilt_x=tilt_x, tilt_y=tilt_y):
+                        self.assertGreaterEqual(min(x, y), 0)
+                        self.assertLessEqual(max(x + size, y + size), 240)
+                        self.assertLess((x + size/2 - 120)**2 + (y + size/2 - 120)**2,
+                                        119**2)
+        self.assertEqual(water_ambient_particles("nature", 3, growth=0), [])
+        self.assertEqual(len(water_ambient_particles("nature", 3, growth=.4)), 2)
+        self.assertEqual(len(water_ambient_particles("nature", 3, growth=.7)), 4)
+
+    def test_nature_has_growing_wildlife_wind_sway_and_night_fireflies(self):
+        sapling = nature_ambient_particles(1, growth=0)
+        growing = nature_ambient_particles(1, growth=.4)
+        waterfall = nature_ambient_particles(1, growth=.7)
+        dusk = nature_ambient_particles(1, phase="dusk", growth=.7)
+        self.assertEqual(len(sapling), 1)
+        self.assertGreater(len(growing), len(sapling))
+        self.assertEqual(len(waterfall), len(growing) + 2)
+        self.assertEqual(len(dusk), len(waterfall) + 4)
+        self.assertNotEqual(nature_ambient_particles(1, growth=.7),
+                            nature_ambient_particles(6, growth=.7))
+        self.assertNotEqual(nature_ambient_particles(6, growth=.7, weather="windy"),
+                            nature_ambient_particles(6, growth=.7))
+        self.assertEqual(nature_ambient_particles(5, phase="lights_out"), [])
+        for phase in ("day", "night"):
+            for x, y, size, _ in nature_ambient_particles(
+                    14, phase=phase, growth=1, tilt_x=8, tilt_y=8):
+                self.assertLess((x + size/2 - 120)**2 + (y + size/2 - 120)**2,
+                                119**2)
 
     def test_alpha_and_validation(self):
         red, green = b"\xf8\x00", b"\x07\xe0"
@@ -276,7 +393,7 @@ class RoundScreenTest(unittest.TestCase):
                 before = device.rows
                 self.assertTrue(screen.animate(120))
                 self.assertEqual(screen.status()["animation_tick"], 1)
-                self.assertEqual(len(screen.particles), 4)
+                self.assertEqual(len(screen.particles), 9)
                 self.assertTrue(screen.animate(120))
                 self.assertEqual(screen.status()["animation_tick"], 2)
                 self.assertGreater(device.rows, before)
@@ -288,7 +405,7 @@ class RoundScreenTest(unittest.TestCase):
                                 "shake_id": self.shake_id}
                 motion = Motion()
                 self.assertTrue(screen.animate(120, motion))
-                self.assertEqual(screen.particles[0][0], 78)
+                self.assertEqual(screen.particles[0][0], 80)
                 motion.shake_id = 1
                 self.assertTrue(screen.animate(120, motion))
                 self.assertEqual(screen.particles[0][3], 0xFFFF)

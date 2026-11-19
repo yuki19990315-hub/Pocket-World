@@ -40,13 +40,16 @@ const modes = ["city", "forest", "aquarium", "nature", "hybrid", "fantasy"]
 let drawCount = 0;
 let imageDrawCount = 0;
 const imageSources = [];
+const drawnAssets = [];
 class MockImage {
   constructor() { this.complete = false; this.naturalWidth = 0; }
   set src(url) {
-    assert.match(url, /^assets\/(city|forest|aquarium|nature|hybrid|fantasy)-(young|mature)\.png$/);
+    assert.match(url, /^assets\/(city|forest|aquarium|nature|hybrid|fantasy)-(young|mid|mature)\.png$/);
+    if (url.includes("-mid")) assert.equal(url, "assets/hybrid-mid.png");
     assert.ok(fs.existsSync(path.join(__dirname, url)), "missing image asset " + url);
     this.complete = true;
     this.naturalWidth = 240;
+    this.url = url;
     imageSources.push(url);
   }
 }
@@ -67,8 +70,13 @@ const canvasContext = {
     assert.deepEqual([x, y, width, height], [0, 0, 240, 240]);
     drawCount++;
     imageDrawCount++;
+    drawnAssets.push(image.url);
   },
-  scale(x, y) { assert.deepEqual([x, y], [2, 2]); },
+  scale(x, y) {
+    // The scene draws in virtual 120px coordinates; tiny 1x3px residents
+    // temporarily undo that scale to stay at true LCD pixel size.
+    assert.ok((x === 2 && y === 2) || (x === 0.5 && y === 0.5));
+  },
   save() {}, restore() {}, clearRect() {}
 };
 nodes.world.getContext = () => canvasContext;
@@ -91,7 +99,7 @@ assert.match(source, /<canvas id="world" width="240" height="240"/);
 assert.match(source, /<script src="preview.js"><\/script>/);
 
 vm.runInNewContext(js, { document, Math, console, Image: MockImage, requestAnimationFrame: (fn) => callbacks.push(fn) });
-assert.equal(imageSources.length, 12, "six worlds with two painted stages each");
+assert.equal(imageSources.length, 13, "six worlds, with three stages for hybrid");
 assert.equal(nodes["world-name"].textContent, "街の世界");
 assert.equal(nodes["stat-a"].textContent, "1");
 assert.ok(drawCount > 0);
@@ -111,6 +119,15 @@ for (const mode of modes) {
   assert.equal(imageDrawCount, previousImageDraws + 2, "artwork for " + mode.dataset.world + " was not drawn");
   assert.ok(nodes["world-name"].textContent.length > 0);
 }
+const hybridButton = modes.find(mode => mode.dataset.world === "hybrid");
+nodes.day.listeners.input({target: {value: "0"}});
+hybridButton.click();
+assert.deepEqual(drawnAssets.slice(-2), ["assets/hybrid-young.png", "assets/hybrid-mid.png"]);
+nodes.day.listeners.input({target: {value: "10"}});
+assert.deepEqual(drawnAssets.slice(-2), ["assets/hybrid-mid.png", "assets/hybrid-mature.png"]);
+nodes.day.listeners.input({target: {value: "30"}});
+assert.deepEqual(drawnAssets.slice(-2), ["assets/hybrid-mid.png", "assets/hybrid-mature.png"]);
+nodes.day.listeners.input({target: {value: "7"}});
 nodes["plus-week"].click();
 assert.equal(nodes["day-label"].textContent, "DAY 14");
 nodes["plus-day"].click();

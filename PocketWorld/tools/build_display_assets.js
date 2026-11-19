@@ -10,6 +10,7 @@ const design = path.join(__dirname, '..', 'design', 'assets');
 const output = path.join(__dirname, '..', 'firmware', 'assets');
 const bundle = path.join(__dirname, '..', '..', 'SannyCompanionAndroid', 'app', 'src', 'main', 'assets', 'world_pack');
 const worlds = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium', 'river', 'deepsea'];
+const phases = world => world === 'hybrid' ? ['young', 'mid', 'mature'] : ['young', 'mature'];
 
 async function rgb565(input, destination) {
   const {data, info} = await sharp(input).removeAlpha().raw().toBuffer({resolveWithObject: true});
@@ -30,7 +31,7 @@ async function main() {
   fs.mkdirSync(output, {recursive: true});
   fs.mkdirSync(bundle, {recursive: true});
   let total = 0;
-  for (const world of worlds) for (const stage of ['young', 'mature']) {
+  for (const world of worlds) for (const stage of phases(world)) {
     const name = `${world}-${stage}`;
     const png = path.join(design, name + '.png');
     const dat = path.join(output, name + '.dat');
@@ -40,8 +41,8 @@ async function main() {
   }
   fs.copyFileSync(path.join(__dirname, '..', 'www', 'index.html'), path.join(bundle, 'index.html'));
   // Deploy dashboard last, so a partial transfer leaves the previous UI active.
-  const names = [...worlds.flatMap(w => ['young', 'mature'].flatMap(s => [`${w}-${s}.dat`, `${w}-${s}.png`])), 'index.html'];
+  const names = [...worlds.flatMap(w => phases(w).flatMap(s => [`${w}-${s}.dat`, `${w}-${s}.png`])), 'index.html'];
   fs.writeFileSync(path.join(bundle, 'manifest.txt'), names.join('\n') + '\n');
-  console.log(`Built ${worlds.length * 2} device frames (${total} bytes RGB565); packaged ${names.length} update files`);
+  console.log(`Built ${(names.length - 1) / 2} device frames (${total} bytes RGB565); packaged ${names.length} update files`);
 }
 main().catch(err => {console.error(err); process.exitCode = 1;});
