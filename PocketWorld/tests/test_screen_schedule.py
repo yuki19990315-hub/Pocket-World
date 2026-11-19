@@ -15,7 +15,8 @@ class FakeScreen:
         self.visible = True
         self.transitions = []
 
-    def set_visible(self, enabled, minutes):
+    def set_visible(self, enabled, minutes, world=None):
+        assert world is not None and world["id"] == self.selected
         if self.visible == enabled:
             return False
         self.visible = enabled

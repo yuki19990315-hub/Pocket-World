@@ -8,6 +8,17 @@ from world_model import (MATURITY_MINUTES, MAX_OFFLINE_SECONDS, PocketWorld,
 
 
 class TestPocketWorld(unittest.TestCase):
+    def test_town_starts_with_one_house_and_two_wandering_residents(self):
+        engine = PocketWorld()
+        city = engine.worlds["city"]
+        self.assertEqual((city["houses"], city["residents"]), (1, 2))
+        engine.advance(70 * 60)
+        self.assertEqual((city["houses"], city["residents"]), (1, 3))
+        engine.advance(110 * 60)
+        self.assertEqual(city["houses"], 2)
+        self.assertGreater(city["residents"], 2)
+        self.assertEqual(PocketWorld(engine.persistable()).worlds["city"], city)
+
     def test_six_worlds_exist(self):
         engine = PocketWorld()
         self.assertEqual(set(engine.worlds), {"nature", "city", "hybrid", "fantasy",

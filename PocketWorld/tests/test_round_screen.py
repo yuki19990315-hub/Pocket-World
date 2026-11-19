@@ -6,7 +6,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
 from round_screen import (BatteryGauge, CST816Touch, FRAME_SIZE, GC9A01,
-                          RoundScreen, blend_row)
+                          RoundScreen, blend_row, town_art_alpha, town_people)
 
 
 class Pin:
@@ -99,6 +99,46 @@ class Display:
 
 
 class RoundScreenTest(unittest.TestCase):
+    def test_town_population_moves_as_exact_one_by_three_pixel_figures(self):
+        self.assertEqual(town_art_alpha(0, 1), 0)
+        self.assertEqual(town_art_alpha(43200, 1), 0)
+        self.assertGreater(town_art_alpha(180, 2), 0)
+        self.assertEqual(town_art_alpha(43200, 14), 255)
+        self.assertEqual(len(town_people(2, 1)), 2)
+        self.assertNotEqual(town_people(2, 1), town_people(2, 2))
+        self.assertEqual(len(town_people(40, 1)), 18)
+        previous = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                os.mkdir("assets")
+                for stage, color in (("young", b"\xf8\x00"),
+                                     ("mature", b"\x07\xe0")):
+                    with open("assets/city-" + stage + ".dat", "wb") as handle:
+                        handle.write(color * (FRAME_SIZE // 2))
+                driver = Display()
+                screen = RoundScreen(driver)
+                screen.choose("city")
+                world = {"houses": 1, "residents": 2}
+                self.assertTrue(screen.show(0, world=world))
+                self.assertTrue(screen.animate(0, world=world))
+                self.assertEqual(len(screen.people), 2)
+                self.assertEqual(len(screen.particles), 0)
+                marks = [call for call in driver.calls if call[0] == "solid"]
+                self.assertEqual(len(marks), 6)
+                for _, (x, y, width, height, color) in marks:
+                    self.assertEqual((width, height), (1, 1))
+                before = screen.people[:]
+                self.assertTrue(screen.animate(0, world=world))
+                self.assertNotEqual(screen.people, before)
+                self.assertEqual(driver.rows, 240 + 6)
+                world["residents"] = 4
+                self.assertTrue(screen.animate(180, world=world))
+                self.assertEqual(len(screen.people), 4)
+                self.assertEqual(driver.rows, 240 + 6 + 6)
+            finally:
+                os.chdir(previous)
+
     def test_alpha_and_validation(self):
         red, green = b"\xf8\x00", b"\x07\xe0"
         self.assertEqual(blend_row(red, green, 0), red)

@@ -152,7 +152,8 @@ def sync_screen_schedule(screen, power, engine):
         return False
     asleep = power.status()["mode"] == "sleep"
     return screen.set_visible(not asleep,
-                              engine.worlds[screen.selected]["minutes"])
+                              engine.worlds[screen.selected]["minutes"],
+                              world=engine.worlds[screen.selected])
 
 
 def query_param(path, key):
@@ -302,7 +303,8 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
                 screen.choose_water_area(area)
             save_display_selection(screen.selected, screen.water_area,
                                    screen.brightness_setting)
-            screen.show(engine.worlds[screen.selected]["minutes"], force=True)
+            screen.show(engine.worlds[screen.selected]["minutes"], force=True,
+                        world=engine.worlds[screen.selected])
             response(client, "200 OK", "application/json", json.dumps(screen.status()))
         except (ValueError, OSError, TypeError) as exc:
             response(client, "400 Bad Request", "application/json",
@@ -430,7 +432,8 @@ def main():
             touch_reset = machine.Pin(13, machine.Pin.OUT, value=1)
             screen = RoundScreen(driver, bus, touch_reset, battery)
             load_display_selection(screen)
-            if not screen.show(engine.worlds[screen.selected]["minutes"], force=True):
+            if not screen.show(engine.worlds[screen.selected]["minutes"], force=True,
+                               world=engine.worlds[screen.selected]):
                 print("Display art missing: upload assets/*.dat to /assets")
         except (ImportError, OSError, ValueError, AttributeError, MemoryError) as exc:
             print("Round LCD unavailable:", exc)
@@ -507,25 +510,29 @@ def main():
                 if action is not None and action[0] in ("world", "area"):
                     save_display_selection(screen.selected, screen.water_area,
                                            screen.brightness_setting)
-                    screen.show(engine.worlds[screen.selected]["minutes"], force=True)
+                    screen.show(engine.worlds[screen.selected]["minutes"], force=True,
+                                world=engine.worlds[screen.selected])
                 elif action is not None and action[0] == "tap":
                     if engine.tap(screen.selected):
                         save_worlds(engine)
                         since_save = 0
                 elif action is not None and action[0] == "info":
-                    screen.show_info(engine.worlds[screen.selected]["minutes"])
+                    screen.show_info(engine.worlds[screen.selected]["minutes"],
+                                     world=engine.worlds[screen.selected])
             except (OSError, ValueError) as exc:
                 print("Touch read failed:", exc)
         if screen is not None and screen_ms >= 60000:
             screen_ms %= 60000
             try:
-                screen.show(engine.worlds[screen.selected]["minutes"])
+                screen.show(engine.worlds[screen.selected]["minutes"],
+                            world=engine.worlds[screen.selected])
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display refresh failed:", exc)
         if screen is not None and animation_ms >= 1400:
             animation_ms %= 1400
             try:
-                screen.animate(engine.worlds[screen.selected]["minutes"], motion)
+                screen.animate(engine.worlds[screen.selected]["minutes"], motion,
+                               world=engine.worlds[screen.selected])
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display animation failed:", exc)
         if microphone is not None and mic_ms >= 250:

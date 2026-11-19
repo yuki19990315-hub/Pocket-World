@@ -24,7 +24,7 @@ function fakeNode(dataset = {}) {
   };
 }
 
-async function runPreview(world, area, liveState = false) {
+async function runPreview(world, area, liveState = false, illustrated = false) {
   const nodes = new Map();
   const worldButtons = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium']
     .map(id => fakeNode({world: id}));
@@ -34,10 +34,16 @@ async function runPreview(world, area, liveState = false) {
   nodes.set('water-tabs', waterTabs);
   let drawn = 0;
   let translated = 0;
+  let artworkDrawn = 0;
+  const smallPixels = [];
   const context = {
     clearRect() {}, save() {}, restore() {}, beginPath() {}, arc() {}, clip() {},
     translate() { translated += 1; }, scale() {}, moveTo() {}, lineTo() {}, stroke() {},
-    fillRect() { drawn += 1; },
+    fillRect(x, y, width, height) {
+      drawn += 1;
+      if (width === 1 && height === 1) smallPixels.push([x, y]);
+    },
+    drawImage() { artworkDrawn += 1; },
   };
   const canvas = fakeNode();
   canvas.getContext = () => context;
@@ -57,6 +63,7 @@ async function runPreview(world, area, liveState = false) {
     URLSearchParams, Date, Math, AbortSignal,
     setTimeout() { return 1; }, clearTimeout() {}, setInterval() {},
     requestAnimationFrame(callback) { frame = callback; },
+    ...(illustrated ? {Image: class { constructor() { this.complete = true; this.naturalWidth = 240; } }} : {}),
     fetch() {
       if (!liveState) return Promise.reject(new Error('deliberately offline'));
       const worlds = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium']
@@ -75,7 +82,13 @@ async function runPreview(world, area, liveState = false) {
   await new Promise(resolve => setImmediate(resolve));
   assert.equal(typeof frame, 'function');
   frame(1200);
-  assert.ok(drawn > 50, 'canvas draws substantial scene');
+  assert.ok(illustrated ? artworkDrawn > 0 : drawn > 50,
+    'canvas draws the illustration or substantial procedural scene');
+  if (illustrated && world === 'city') {
+    assert.equal(smallPixels.length, 6, 'two 1x3 pedestrians use six native pixels');
+    assert.match(nodes.get('stats').innerHTML, /<strong>2<\/strong><em>人<\/em>/);
+    assert.match(nodes.get('stats').innerHTML, /<strong>1<\/strong><em>軒<\/em>/);
+  }
   assert.ok(nodes.get('world-title').textContent.length > 0);
   if (liveState) {
     assert.ok(translated > 0, 'onboard tilt moves the scene');
@@ -104,6 +117,7 @@ async function runPreview(world, area, liveState = false) {
     ['nature', 'river'], ['forest', 'river'], ['aquarium', 'river'],
     ['aquarium', 'ocean'], ['aquarium', 'deepsea'],
   ]) await runPreview(world, area);
+  await runPreview('city', 'river', false, true);
   await runPreview('aquarium', 'deepsea', true);
-  process.stdout.write('Pocket World UI: 6 scene/lock smoke tests passed\n');
+  process.stdout.write('Pocket World UI: scene/lock/tiny resident smoke tests passed\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

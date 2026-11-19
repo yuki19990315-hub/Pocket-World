@@ -17,6 +17,31 @@ HEIGHT = 240
 WORLD_IDS = ("nature", "city", "hybrid", "fantasy", "forest", "aquarium")
 WATER_AREAS = ("river", "ocean", "deepsea")
 FRAME_SIZE = WIDTH * HEIGHT * 2
+TOWN_FULL_HOUSES = 14  # 1 starter home + the 13 scheduled construction events.
+TOWN_VISIBLE_RESIDENTS = 18
+
+
+def town_art_alpha(minutes, houses=None):
+    """Show exactly the first cottage until another house exists.
+
+    On the device, house growth drives the illustrated town transition.
+    Older callers without a world snapshot retain time-based blending.
+    """
+    if houses is None:
+        return min(255, max(0, int(minutes) * 255 // (30 * 1440)))
+    return min(255, max(0, (int(houses) - 1) * 255 // (TOWN_FULL_HOUSES - 1)))
+
+
+def town_people(count, tick, tilt_x=0, tilt_y=0):
+    """Deterministic 1x3 pedestrians along the town's winding central path."""
+    positions = []
+    for i in range(min(TOWN_VISIBLE_RESIDENTS, max(0, int(count)))):
+        phase = (tick + i * 7) % 24
+        step = phase if phase < 12 else 24 - phase
+        x = 93 + (i * 19) % 45 + step + tilt_x
+        y = 157 + (i * 29) % 49 + ((tick // 5 + i) % 3) + tilt_y
+        positions.append((x, y))
+    return positions
 
 
 def blend_row(early, late, alpha):
@@ -274,6 +299,7 @@ class RoundScreen:
         self.brightness_setting = 65
         self.animation_tick = 0
         self.particles = []
+        self.people = []
         self.info_frames = 0
         self.shake_last_id = None
         self.shake_frames = 0
@@ -316,7 +342,7 @@ class RoundScreen:
             return ("info", self.selected)
         return None
 
-    def show(self, minutes, force=False):
+    def show(self, minutes, force=False, world=None):
         """Draw once on mode/day changes or scheduled refresh; no frame buffer."""
         if not self.visible:
             return False
@@ -326,7 +352,8 @@ class RoundScreen:
         mature_path = "assets/%s-mature.dat" % ident
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = min(255, max(0, int(minutes) * 255 // (30 * 1440)))
+        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
+                 if self.selected == "city" else town_art_alpha(minutes))
         with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
             self.driver.window(0, 0, WIDTH, HEIGHT)
             self.driver.start_pixels()
@@ -339,6 +366,7 @@ class RoundScreen:
             finally:
                 self.driver.stop_pixels()
         self.particles = []
+        self.people = []
         self.info_frames = 0
         self.last_draw_at = int(minutes)
         if self.battery is not None:
@@ -355,7 +383,7 @@ class RoundScreen:
                 self.driver.solid(132, 22, 4, 4, 0x05E0)
         return True
 
-    def set_visible(self, enabled, minutes):
+    def set_visible(self, enabled, minutes, world=None):
         """Safe scheduled screen blanking without disabling Wi-Fi or USB.
 
         Deep sleep uses a separate opt-in hardware path. The backlight can
@@ -367,7 +395,7 @@ class RoundScreen:
         if enabled:
             self.visible = True
             self.driver.set_brightness(self.brightness_setting)
-            self.show(minutes, force=True)
+            self.show(minutes, force=True, world=world)
         else:
             # A short, reversible dusk transition before backlight-off.
             for brightness in (40, 20, 8, 0):
@@ -375,6 +403,7 @@ class RoundScreen:
                 getattr(time, "sleep_ms", lambda ms: time.sleep(ms / 1000))(35)
             self.visible = False
             self.particles = []
+            self.people = []
         return True
 
     def set_brightness(self, percent):
@@ -405,8 +434,22 @@ class RoundScreen:
         finally:
             self.driver.stop_pixels()
 
-    def animate(self, minutes, motion=None):
-        """Animate four tiny sprites with patch restores, not full-frame redraws.
+    def _restore_person(self, young, mature, point, alpha):
+        """Restore the exact three underlying RGB565 pixels after a step."""
+        x, y = point
+        self.driver.window(x, y, 1, 3)
+        self.driver.start_pixels()
+        try:
+            for line in range(3):
+                offset = ((y + line) * WIDTH + x) * 2
+                young.seek(offset)
+                mature.seek(offset)
+                self.driver.write_pixels(blend_row(young.read(2), mature.read(2), alpha))
+        finally:
+            self.driver.stop_pixels()
+
+    def animate(self, minutes, motion=None, world=None):
+        """Animate town pedestrians or ambient particles with small patch restores.
 
         Motion is intentionally decorative: no changes to simulation state.
         A few hundred SPI bytes per tick are much cheaper than a fresh frame.
@@ -421,10 +464,13 @@ class RoundScreen:
         early_path, mature_path = self._current_art_paths()
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = min(255, max(0, int(minutes) * 255 // (30 * 1440)))
+        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
+                 if self.selected == "city" else town_art_alpha(minutes))
         with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
             for rect in self.particles:
                 self._restore_patch(early, mature, rect, alpha)
+            for point in self.people:
+                self._restore_person(early, mature, point, alpha)
         self.animation_tick += 1
         tilt_x, tilt_y = 0, 0
         if motion is not None:
@@ -437,6 +483,19 @@ class RoundScreen:
                     and shake_id > self.shake_last_id):
                     self.shake_frames = 4
                 self.shake_last_id = shake_id
+        if self.selected == "city":
+            # Actual town population is the source of truth; a visual cap keeps
+            # the display legible as the population grows toward 40 residents.
+            self.particles = []
+            count = world.get("residents", 2) if world else 2
+            self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
+            shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
+            for i, (x, y) in enumerate(self.people):
+                self.driver.solid(x, y, 1, 1, 0xFFBE)  # head
+                self.driver.solid(x, y + 1, 1, 1, shirts[i % len(shirts)])
+                self.driver.solid(x, y + 2, 1, 1, 0x2104)  # feet
+            return True
+        self.people = []
         watery = self.selected == "aquarium"
         colour = (0xC7DF if watery else 0xFFDF if self.selected == "fantasy"
                   else 0xF6A4 if self.selected == "forest" else 0xE7B1)
@@ -452,11 +511,19 @@ class RoundScreen:
         ]
         for x, y, size, value in self.particles:
             self.driver.solid(x, y, size, size, value)
+        if self.selected in ("hybrid", "fantasy"):
+            count = world.get("residents", 0) if world else 0
+            self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
+            shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
+            for i, (x, y) in enumerate(self.people):
+                self.driver.solid(x, y, 1, 1, 0xFFBE)
+                self.driver.solid(x, y + 1, 1, 1, shirts[i % len(shirts)])
+                self.driver.solid(x, y + 2, 1, 1, 0x2104)
         return True
 
-    def show_info(self, minutes):
+    def show_info(self, minutes, world=None):
         """Long-press displays a compact, approximate four-segment gauge."""
-        if not self.show(minutes, force=True):
+        if not self.show(minutes, force=True, world=world):
             return False
         voltage = self.battery_state.get("voltage") if self.battery_state else None
         bars = sum(voltage >= cutoff for cutoff in (3.5, 3.65, 3.85, 4.05)) \

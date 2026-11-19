@@ -78,7 +78,7 @@ class PocketWorld:
                 "remainder": self._int(old, "remainder", 0),
                 "plants": self._int(old, "plants", 10 if ident != "city" else 4),
                 "wildlife": self._int(old, "wildlife", 2 if ident != "city" else 0),
-                "residents": self._int(old, "residents", 1 if ident == "city" else 0),
+                "residents": self._int(old, "residents", 2 if ident == "city" else 0),
                 "houses": self._int(old, "houses", 1 if ident == "city" else 0),
                 "magic": self._int(old, "magic", 1 if ident == "fantasy" else 0),
                 "sound_activity": _clamp(self._int(old, "sound_activity", 0), 0, 19),

@@ -34,7 +34,7 @@ class TestSoundReactions(unittest.TestCase):
         engine = PocketWorld()
         for _ in range(4):
             engine.observe_sound(85)
-        self.assertEqual(engine.worlds["city"]["residents"], 2)
+        self.assertEqual(engine.worlds["city"]["residents"], 3)
         self.assertEqual(engine.worlds["hybrid"]["residents"], 0)
         for _ in range(8):
             engine.observe_sound(85)

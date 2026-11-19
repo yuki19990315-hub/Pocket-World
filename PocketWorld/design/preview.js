@@ -122,6 +122,26 @@
   let lastFrame = 0;
   let lastCanvasPaint = 0;
   let animatedSeconds = 0;
+  const houseMilestones=[180,720,1440,2880,4320,5760,8640,10080,14400,20160,28800,36000,43200];
+  function cityNumbers() {
+    const minutes = elapsedDays * 1440;
+    return [1 + houseMilestones.filter(mark => minutes >= mark).length,
+      2 + (minutes <= 180 ? Math.floor(minutes / 70) : 2 + Math.floor(minutes / 1440))];
+  }
+  function tinyPeople(count, seconds) {
+    // The enclosing illustration layer uses a 120x120 working space.
+    // Undo that scale: each human is exactly 1x3 native LCD pixels.
+    ctx.save();ctx.scale(.5,.5);
+    const tick=Math.floor(seconds*1000/1400);
+    const shirts=["#1c3746","#bc3c36","#36435b","#8b3554"];
+    for(let i=0;i<Math.min(18,count);i++){
+      const phase=(tick+i*7)%24,step=phase<12?phase:24-phase;
+      const x=93+(i*19)%45+step;
+      const y=157+(i*29)%49+(Math.floor(tick/5)+i)%3;
+      rect(x,y,1,1,"#ffdeb3");rect(x,y+1,1,1,shirts[i%shirts.length]);rect(x,y+2,1,1,"#20252b");
+    }
+    ctx.restore();
+  }
   const growth = () => Math.log2(1 + elapsedDays) / Math.log2(31);
   const grown = (start, extra) => start + Math.floor(extra * growth());
   const night = () => (elapsedDays % 1) > 0.70;
@@ -206,12 +226,6 @@
     rect(x + 2, y - 13, 2, 2, "#f4c78d");
     if (kind % 4 === 1) rect(x + 4, y - 19, 3, 7, "#79665a");
   }
-  function person(x, y, color, t) {
-    const bob = Math.sin(t * 2 + x) > 0 ? 0 : 1;
-    rect(x, y - 5 - bob, 3, 3, "#f3c3a0");
-    rect(x - 1, y - 2 - bob, 5, 4, color);
-    rect(x, y + 2 - bob, 1, 2, "#414b56"); rect(x + 2, y + 2 - bob, 1, 2, "#414b56");
-  }
   function flowers(x, y, fill) {
     rect(x, y, 1, 3, "#497b57"); rect(x - 1, y - 1, 3, 2, fill); rect(x, y, 1, 1, "#f3d49e");
   }
@@ -272,7 +286,7 @@
     blades(58, 83, 116, "#9fc18a", 247);
     polygon([[47, 120], [49, 84], [62, 69], [70, 81], [76, 120]], "#ac9b80");
     polygon([[53, 120], [54, 90], [62, 77], [65, 90], [68, 120]], "#ccbb94");
-    const buildingCount = Math.min(16, grown(blended ? 1 : 1, blended ? 8 : 15));
+    const buildingCount = blended ? grown(1, 8) : cityNumbers()[0];
     for (let k = 0; k < buildingCount; k++) {
       const slot = buildingSlots[k];
       house(slot[0], slot[1], k, afterDark);
@@ -290,12 +304,7 @@
       tree(10, 69, 1, "#6baa70");
       tree(110, 74, 1, "#6daa75");
     }
-    const people = Math.min(9, Math.floor(g * 11) + 1);
-    for (let k = 0; k < people; k++) {
-      const xx = 22 + ((k * 23) % 78);
-      const yy = 103 + ((k * 7) % 9);
-      person(xx, yy, ["#bb6259", "#5b768c", "#dbb35e", "#8a72aa"][k % 4], t);
-    }
+    if(!blended)tinyPeople(cityNumbers()[1],t);
   }
 
   function forestScene(g, t) {
@@ -442,7 +451,9 @@
     if (pair.young.complete && pair.young.naturalWidth && pair.mature.complete && pair.mature.naturalWidth) {
       // A stable scene at both ends of the timeline; gradual painterly dissolve in between.
       ctx.drawImage(pair.young, 0, 0, 240, 240);
-      ctx.globalAlpha = limit(elapsedDays / 30, 0, 1);
+      ctx.globalAlpha = selected === "city"
+        ? (cityNumbers()[0]-1)/houseMilestones.length
+        : limit(elapsedDays / 30, 0, 1);
       ctx.drawImage(pair.mature, 0, 0, 240, 240);
       ctx.globalAlpha = 1;
       if (night() && selected !== "fantasy" && selected !== "aquarium") {
@@ -472,13 +483,7 @@
   function livingDetails(world, g, t) {
     // Details deliberately stay tiny; the painted backgrounds are the stars.
     if (world === "city" || world === "hybrid") {
-      const walkers = Math.min(world === "city" ? 4 : 2, 1 + Math.floor(g * 4));
-      for (let i = 0; i < walkers; i++) {
-        const speed = i % 2 ? -1.4 : 1.4;
-        const x = 25 + ((i * 32 + t * speed + 2000) % 76);
-        const y = 84 + i * 5;
-        person(x, y, ["#bc594a", "#5c7eb1", "#e7b55e", "#8a70ab"][i], t);
-      }
+      tinyPeople(world === "city" ? cityNumbers()[1] : Math.floor(g*7),t);
       if (world === "hybrid" && g > .3) rabbit(83, 95, t);
     }
     if (world === "forest") {
@@ -530,7 +535,7 @@
 
   function sceneStats() {
     const g = growth();
-    if (selected === "city") return [grown(1, 15), grown(1, 35)];
+    if (selected === "city") return cityNumbers();
     if (selected === "forest") return [grown(2, 65), grown(1, 19)];
     if (selected === "aquarium") return [grown(2, 15), grown(3, 32)];
     if (selected === "nature") return [grown(2, 75), grown(0, 20)];

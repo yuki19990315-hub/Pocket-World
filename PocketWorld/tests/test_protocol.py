@@ -88,7 +88,8 @@ class TestProtocol(unittest.TestCase):
                 self.water_area = area
             def set_brightness(self, percent):
                 self.brightness_setting = percent
-            def show(self, minutes, force=False):
+            def show(self, minutes, force=False, world=None):
+                assert world is not None and world["id"] == self.selected
                 return True
             def status(self):
                 return {"selected": self.selected, "connected": True}
@@ -128,7 +129,8 @@ class TestProtocol(unittest.TestCase):
                 self.selected = ident
             def choose_water_area(self, area):
                 self.water_area = area
-            def show(self, minutes, force=False):
+            def show(self, minutes, force=False, world=None):
+                assert world is not None and world["id"] == self.selected
                 return True
             def status(self):
                 return {"selected": self.selected, "water_area": self.water_area}
