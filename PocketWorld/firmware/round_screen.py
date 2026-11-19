@@ -21,6 +21,11 @@ TOWN_FULL_HOUSES = 14  # 1 starter home + the 13 scheduled construction events.
 TOWN_VISIBLE_RESIDENTS = 18
 HYBRID_MID_MINUTES = 10 * 1440
 HYBRID_MATURE_MINUTES = 30 * 1440
+# Landmark pixels shared by all three matched hybrid backgrounds.
+# These are inside the circular LCD and on the same land/water features.
+HYBRID_LEAVES = ((54, 45), (72, 51), (84, 61))
+HYBRID_LAKE = ((150, 161), (177, 169), (190, 183), (165, 197))
+HYBRID_FALLS = ((132, 119), (140, 138))
 
 
 def town_art_alpha(minutes, houses=None):
@@ -67,6 +72,39 @@ def hybrid_people(count, tick, tilt_x=0, tilt_y=0):
         y = 108 + (i * 23) % 56 + ((tick // 5 + i) % 3) + tilt_y
         positions.append((x, y))
     return positions
+
+
+def hybrid_ambient_particles(tick, phase="day", weather="sunny",
+                             tilt_x=0, tilt_y=0, shaking=False):
+    """Subtle leaf sway and water shimmer, without repainting the scenery.
+
+    Each result is (x, y, square size, RGB565). Animate() restores the
+    underlying RGB565 pixels before redrawing the next positions.
+    """
+    if phase == "lights_out":
+        return []
+    windy = weather in ("windy", "rain")
+    pace = 2 if windy else 4
+    bright = phase in ("day", "dawn")
+    leaf_color = 0xB6D4 if bright else 0x3349
+    water_color = 0xD7FE if bright else 0x42B5
+    falls_color = 0xBFFF if bright else 0x3A53
+    if shaking:
+        leaf_color = water_color = falls_color = 0xFFFF
+    particles = []
+    for index, (base_x, base_y) in enumerate(HYBRID_LEAVES):
+        sway = ((tick // pace + index) % 3) - 1
+        particles.append((base_x + sway * (2 if windy else 1) + tilt_x,
+                          base_y + tilt_y, 2, leaf_color))
+    for index, (base_x, base_y) in enumerate(HYBRID_LAKE):
+        shimmer = ((tick + 2 * index) % 3) - 1
+        particles.append((base_x + shimmer + tilt_x,
+                          base_y + (tick + index) % 2 + tilt_y, 2, water_color))
+    for index, (base_x, base_y) in enumerate(HYBRID_FALLS):
+        particles.append((base_x + tilt_x,
+                          base_y + (tick + index * 3) % 3 + tilt_y,
+                          1, falls_color))
+    return particles
 
 
 def blend_row(early, late, alpha):
@@ -577,19 +615,27 @@ class RoundScreen:
                 self._town_lamps(world)
             return True
         self.people = []
-        watery = self.selected == "aquarium"
-        colour = (0xC7DF if watery else 0xFFDF if self.selected == "fantasy"
-                  else 0xF6A4 if self.selected == "forest" else 0xE7B1)
-        if self.shake_frames:
-            colour = 0xFFFF
-            self.shake_frames -= 1
-        # Keep all 4×4 sprites away from circular screen corners.
-        self.particles = [
-            (72 + (i * 31) % 95 + tilt_x,
-             65 + ((i * 43 - self.animation_tick * (4 if watery else 1)) % 125) + tilt_y,
-             4, colour)
-            for i in range(4)
-        ]
+        if self.selected == "hybrid":
+            self.particles = hybrid_ambient_particles(
+                self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0)
+            if self.shake_frames:
+                self.shake_frames -= 1
+        else:
+            watery = self.selected == "aquarium"
+            colour = (0xC7DF if watery else 0xFFDF if self.selected == "fantasy"
+                      else 0xF6A4 if self.selected == "forest" else 0xE7B1)
+            if self.shake_frames:
+                colour = 0xFFFF
+                self.shake_frames -= 1
+            # Keep all 4×4 sprites away from circular screen corners.
+            self.particles = [
+                (72 + (i * 31) % 95 + tilt_x,
+                 65 + ((i * 43 - self.animation_tick * (4 if watery else 1)) % 125) + tilt_y,
+                 4, colour)
+                for i in range(4)
+            ]
         for x, y, size, value in self.particles:
             self.driver.solid(x, y, size, size, value)
         if self.selected in ("hybrid", "fantasy"):

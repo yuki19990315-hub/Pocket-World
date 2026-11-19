@@ -487,7 +487,23 @@
     // Details deliberately stay tiny; the painted backgrounds are the stars.
     if (world === "city" || world === "hybrid") {
       tinyPeople(world === "city" ? cityNumbers()[1] : 2 + Math.floor(g * 9), t, world === "hybrid");
-      if (world === "hybrid" && g > .3) rabbit(83, 95, t);
+      if (world === "hybrid" && g > .3) rabbit(46, 68, t);
+    }
+    if (world === "hybrid") {
+      // drawScene() is scaled by 2; undo that to align with native 240px LCD
+      // landmarks in round_screen.hybrid_ambient_particles().
+      const tick=Math.floor(t*1000/1400);
+      ctx.save();ctx.scale(.5,.5);
+      [[54,45],[72,51],[84,61]].forEach(([x,y],i)=>{
+        rect(x+((Math.floor(tick/4)+i)%3-1),y,2,2,night()?"#30463c":"#acd9a0");
+      });
+      [[150,161],[177,169],[190,183],[165,197]].forEach(([x,y],i)=>{
+        rect(x+(tick+2*i)%3-1,y+(tick+i)%2,2,2,night()?"#43778b":"#c5edfa");
+      });
+      [[132,119],[140,138]].forEach(([x,y],i)=>{
+        rect(x,y+(tick+i*3)%3,1,1,night()?"#3d6b9a":"#b5f5fc");
+      });
+      ctx.restore();
     }
     if (world === "forest") {
       if (g > .1) rabbit(70 + Math.sin(t * .45) * 5, 90, t);

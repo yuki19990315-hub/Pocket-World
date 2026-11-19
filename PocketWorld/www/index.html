@@ -201,6 +201,27 @@
     });
     ctx.restore();
   }
+  function drawHybridAmbient(world,t){
+    // Tiny highlights anchored to the same tree, lake, and waterfall pixels
+    // as the ESP32 firmware; no oversized glowing sprites over the village.
+    if(activePhase()==="lights_out")return;
+    const tick=Math.floor(t/1400),windy=["windy","rain"].includes(world.weather);
+    const pace=windy?2:4,night=["night","dusk"].includes(activePhase());
+    const leaves=[[54,45],[72,51],[84,61]];
+    const lake=[[150,161],[177,169],[190,183],[165,197]];
+    const falls=[[132,119],[140,138]];
+    ctx.save();ctx.scale(1.5,1.5);
+    leaves.forEach(([x,y],i)=>{
+      const sway=(Math.floor(tick/pace)+i)%3-1;
+      rect(x+sway*(windy?2:1),y,2,2,night?"#30463c":"#acd9a0");
+    });
+    lake.forEach(([x,y],i)=>{
+      const shimmer=(tick+2*i)%3-1;
+      rect(x+shimmer,y+(tick+i)%2,2,2,night?"#43778b":"#c5edfa");
+    });
+    falls.forEach(([x,y],i)=>rect(x,y+(tick+i*3)%3,1,1,night?"#3d6b9a":"#b5f5fc"));
+    ctx.restore();
+  }
   const phaseLabels={dawn:"🌅 日の出",day:"☀ 昼",dusk:"🌇 夕暮れ",night:"🌙 夜・街灯点灯",lights_out:"🌑 消灯・おやすみ"};
   function activePhase(){return previewPhase==="auto"?(powerState.day_phase||"day"):previewPhase;}
   function drawDayLighting(world){
@@ -358,7 +379,7 @@
         ctx.ellipse(180,45,24+i*19+Math.sin(t/390)*9,5+i*3,0,0,Math.PI*2);ctx.stroke();
       }
     }else{
-      const particles=selected==="city"?0:selected==="fantasy"?20:selected==="forest"?10:7;
+      const particles=["city","hybrid"].includes(selected)?0:selected==="fantasy"?20:selected==="forest"?10:7;
       for(let i=0;i<particles;i++){
         const x=45+hash(i,81,seed)*270+Math.sin(t/1500+i)*7;
         const y=70+hash(i,82,seed)*215+Math.cos(t/1300+i)*5;
@@ -374,6 +395,7 @@
           ctx.moveTo(x,y);ctx.lineTo(x-4,y+11);
         }ctx.stroke();
       }
+      if(selected==="hybrid")drawHybridAmbient(world,t);
       if(["city","hybrid","fantasy"].includes(selected))drawTinyResidents(world,t);
     }
     drawDayLighting(world);

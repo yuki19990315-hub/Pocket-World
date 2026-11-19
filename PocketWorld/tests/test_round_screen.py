@@ -7,7 +7,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
 from round_screen import (BatteryGauge, CST816Touch, FRAME_SIZE, GC9A01,
                           RoundScreen, ambience_row, blend_row, hybrid_art_frames,
-                          hybrid_people, town_art_alpha, town_people)
+                          hybrid_ambient_particles, hybrid_people,
+                          town_art_alpha, town_people)
 
 
 class Pin:
@@ -213,8 +214,34 @@ class RoundScreenTest(unittest.TestCase):
                     self.assertEqual(driver.last_frame_first_pixel, expected)
                 self.assertTrue(screen.animate(30 * 1440, world={"residents": 2}))
                 self.assertEqual(len(screen.people), 2)
+                previous_particles = screen.particles[:]
+                previous_rows = driver.rows
+                self.assertTrue(screen.animate(30 * 1440, world={"residents": 2}))
+                self.assertEqual(driver.rows - previous_rows,
+                                 sum(particle[2] for particle in previous_particles) + 6)
             finally:
                 os.chdir(previous)
+
+    def test_hybrid_leaf_and_water_sprites_are_subtle_bounded_and_animated(self):
+        initial = hybrid_ambient_particles(1)
+        moved = hybrid_ambient_particles(6)
+        windy = hybrid_ambient_particles(6, weather="windy")
+        nighttime = hybrid_ambient_particles(6, phase="night")
+        self.assertEqual(len(initial), 9)  # 3 leaves, 4 lake glints, 2 waterfalls
+        self.assertNotEqual([(x, y) for x, y, _, _ in initial],
+                            [(x, y) for x, y, _, _ in moved])
+        self.assertNotEqual([(x, y) for x, y, _, _ in moved],
+                            [(x, y) for x, y, _, _ in windy])
+        self.assertNotEqual(moved[0][3], nighttime[0][3])
+        self.assertEqual(hybrid_ambient_particles(2, phase="lights_out"), [])
+        self.assertTrue(all(color == 0xFFFF for _, _, _, color in
+                            hybrid_ambient_particles(2, shaking=True)))
+        for weather in ("sunny", "windy", "rain"):
+            for x, y, size, _ in hybrid_ambient_particles(
+                    12, weather=weather, tilt_x=8, tilt_y=8):
+                self.assertTrue(0 <= x <= 240-size and 0 <= y <= 240-size)
+                self.assertLess((x + size/2 - 120)**2 + (y + size/2 - 120)**2,
+                                119**2)
 
     def test_alpha_and_validation(self):
         red, green = b"\xf8\x00", b"\x07\xe0"
