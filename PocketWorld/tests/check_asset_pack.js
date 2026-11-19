@@ -53,7 +53,7 @@ const names = [];
     names.push(base+'.dat',base+'.png');
   }
   names.push('index.html');
-  assert.deepEqual(fs.readFileSync(path.join(pack,'manifest.txt'),'utf8').trim().split('\n'),names);
+  assert.deepEqual(fs.readFileSync(path.join(pack,'manifest.txt'),'utf8').trim().split(/\r?\n/),names);
   assert.deepEqual(fs.readFileSync(path.join(pack,'index.html')),fs.readFileSync(path.join(root,'www','index.html')));
   assert.ok(names.every(name=>fs.statSync(path.join(pack,name)).size<=128*1024));
   console.log(`Illustrated asset pack: ${scenes.length} scenes / ${names.length} OTA files verified`);

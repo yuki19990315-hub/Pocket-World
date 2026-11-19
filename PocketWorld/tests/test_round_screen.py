@@ -66,9 +66,13 @@ class Machine:
 class I2C:
     def __init__(self):
         self.value = b"\x00\x01\x00\x64\x00\x78"
+        self.writes = []
 
     def scan(self):
         return [0x15, 0x6b]
+
+    def writeto_mem(self, address, register, data):
+        self.writes.append((address, register, data))
 
     def readfrom_mem(self, addr, register, size):
         assert (addr, register, size) == (0x15, 0x01, 6)
@@ -313,6 +317,7 @@ class RoundScreenTest(unittest.TestCase):
     def test_touch_distinguishes_tap_swipe_and_chip_gestures(self):
         bus = I2C()
         touch = CST816Touch(bus)
+        self.assertIn((0x15, 0xFE, b"\x01"), bus.writes)
         self.assertIsNone(touch.poll_event())
         self.assertIsNone(touch.poll_event())
         bus.value = b"\x00\x00\x00\x00\x00\x00"

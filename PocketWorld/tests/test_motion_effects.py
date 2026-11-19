@@ -17,7 +17,7 @@ class FakeI2C:
             raise OSError("missing sensor")
         if register == 0x00:
             return b"\x05"
-        if register == 0xB5:
+        if register == 0x35:
             return self.sample
         raise AssertionError((address, register, count))
 
@@ -30,13 +30,15 @@ class TestMotionEffects(unittest.TestCase):
         # +1g, -0.5g, 0g; +64dps, -32dps, 0dps.
         sample = (16384).to_bytes(2, "little", signed=True) + (-8192).to_bytes(2, "little", signed=True)
         sample += (0).to_bytes(2, "little", signed=True)
-        sample += (8192).to_bytes(2, "little", signed=True) + (-4096).to_bytes(2, "little", signed=True)
+        sample += (4096).to_bytes(2, "little", signed=True) + (-2048).to_bytes(2, "little", signed=True)
         sample += (0).to_bytes(2, "little", signed=True)
         i2c = FakeI2C(sample)
         imu = QMI8658(i2c)
         accel, gyro = imu.read()
         self.assertEqual(accel, (1.0, -0.5, 0.0))
         self.assertEqual(gyro, (64.0, -32.0, 0.0))
+        self.assertIn((0x6B, 0x02, 0x40), i2c.writes)
+        self.assertIn((0x6B, 0x04, 0x57), i2c.writes)
         self.assertEqual(i2c.writes[-1], (0x6B, 0x08, 0x03))
         imu.standby()
         self.assertEqual(i2c.writes[-1], (0x6B, 0x08, 0x00))

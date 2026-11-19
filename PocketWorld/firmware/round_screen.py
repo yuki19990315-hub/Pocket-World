@@ -301,7 +301,7 @@ class GC9A01:
             (0x86, b"\xff"), (0x87, b"\xff"), (0x88, b"\x0a"),
             (0x89, b"\x21"), (0x8A, b"\x00"), (0x8B, b"\x80"),
             (0x8C, b"\x01"), (0x8D, b"\x01"), (0x8E, b"\xff"),
-            (0x8F, b"\xff"), (0xB6, b"\x00\x00"), (0x36, b"\x48"),
+            (0x8F, b"\xff"), (0xB6, b"\x00\x00"), (0x36, b"\x40"),
             (0x3A, b"\x05"), (0x90, b"\x08\x08\x08\x08"),
             (0xBD, b"\x06"), (0xBC, b"\x00"), (0xFF, b"\x60\x01\x04"),
             (0xC3, b"\x13"), (0xC4, b"\x13"), (0xC9, b"\x22"),
@@ -383,8 +383,10 @@ class CST816Touch:
             reset_pin.value(0)
             getattr(time, "sleep_ms", lambda ms: time.sleep(ms / 1000))(12)
             reset_pin.value(1)
+            getattr(time, "sleep_ms", lambda ms: time.sleep(ms / 1000))(50)
         if self.ADDRESS not in i2c.scan():
             raise OSError("CST816S not found on I2C")
+        i2c.writeto_mem(self.ADDRESS, 0xFE, b"\x01")
         self.was_down = False
         self.start = None
         self.last_point = None

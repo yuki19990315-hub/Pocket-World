@@ -1,7 +1,7 @@
 """Minimal MicroPython QMI8658C 6-axis reader for the Waveshare 1.28 board.
 
 Register addresses and scaling: QST QMI8658C datasheet, registers CTRL2/3/7,
-AX_L (0x35) and GX_L (0x3B). This still needs confirmation on the real PCB.
+AX_L (0x35) and GX_L (0x3B).
 """
 
 
@@ -24,23 +24,22 @@ class QMI8658:
                 continue
         if self.address is None:
             raise OSError("QMI8658C is not responding")
-        # CTRL1: enable register auto-increment, keep default interface mode.
-        self._write(0x02, 0x60)
-        # Accel: +/-2 g, 62.5Hz; gyro: +/-256 dps, 62.5Hz.
+        # CTRL1: enable register auto-increment and select little-endian output.
+        self._write(0x02, 0x40)
+        # Accel: +/-2 g, 62.5Hz; gyro: +/-512 dps, 62.5Hz.
         self._write(0x03, 0x07)
-        self._write(0x04, 0x47)
+        self._write(0x04, 0x57)
         self._write(0x08, 0x03)  # aEN | gEN, no attitude engine.
 
     def _write(self, register, value):
         self.i2c.writeto_mem(self.address, register, bytes((value,)))
 
     def read(self):
-        # I2C subaddress bit 7 requests incrementing 0x35..0x40.
-        data = self.i2c.readfrom_mem(self.address, 0xB5, 12)
+        data = self.i2c.readfrom_mem(self.address, 0x35, 12)
         if len(data) != 12:
             raise OSError("Short QMI8658 sample")
         accel = tuple(_signed16(data[i], data[i + 1]) / 16384.0 for i in (0, 2, 4))
-        gyro = tuple(_signed16(data[i], data[i + 1]) / 128.0 for i in (6, 8, 10))
+        gyro = tuple(_signed16(data[i], data[i + 1]) / 64.0 for i in (6, 8, 10))
         return accel, gyro
 
     def standby(self):
