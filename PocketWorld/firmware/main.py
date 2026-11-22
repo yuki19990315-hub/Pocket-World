@@ -433,7 +433,8 @@ def main():
                 print("Battery ADC unavailable:", exc)
                 battery = None
             touch_reset = machine.Pin(13, machine.Pin.OUT, value=1)
-            screen = RoundScreen(driver, bus, touch_reset, battery)
+            touch_irq = machine.Pin(5, machine.Pin.IN, machine.Pin.PULL_UP)
+            screen = RoundScreen(driver, bus, touch_reset, battery, touch_irq)
             load_display_selection(screen)
             if not screen.show(engine.worlds[screen.selected]["minutes"], force=True,
                                world=engine.worlds[screen.selected]):
@@ -464,7 +465,7 @@ def main():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(address)
     server.listen(2)
-    server.settimeout(0.12)
+    server.settimeout(0.02)
     print("Sanny Pocket World ready on http://192.168.4.1/")
 
     previous = time.ticks_ms()
@@ -506,8 +507,8 @@ def main():
             except OSError as exc:
                 print("Motion read failed, disabling sensor:", exc)
                 sensor = None
-        if screen is not None and touch_ms >= 160:
-            touch_ms %= 160
+        if screen is not None and touch_ms >= 20:
+            touch_ms %= 20
             try:
                 action = screen.poll_touch(engine)
                 if action is not None and action[0] in ("world", "area"):

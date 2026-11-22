@@ -377,7 +377,7 @@ class CST816Touch:
                 4: "swipe_right", 5: "tap", 11: "double_tap",
                 12: "long_press"}
 
-    def __init__(self, i2c, reset_pin=None):
+    def __init__(self, i2c, reset_pin=None, irq_pin=None, clock_ms=None):
         self.i2c = i2c
         if reset_pin is not None:
             reset_pin.value(0)
@@ -387,54 +387,81 @@ class CST816Touch:
         if self.ADDRESS not in i2c.scan():
             raise OSError("CST816S not found on I2C")
         i2c.writeto_mem(self.ADDRESS, 0xFE, b"\x01")
+
+        i2c.writeto_mem(self.ADDRESS, 0xFA, b"\x41")
         self.was_down = False
         self.start = None
         self.last_point = None
-        self.reported = False
-        self.ignore_late_gesture = False
+        self.started_at = 0
+        self.start_gesture = 0
+        self.ignore_late_gesture = True
+        self.irq_sequence = 0
+        self.polled_irq_sequence = 0
+        self.irq_pin = irq_pin
+        self.last_event_at = None
+        self.now_ms = clock_ms or getattr(time, "ticks_ms", lambda: int(time.time() * 1000))
+        self.diff_ms = getattr(time, "ticks_diff", lambda end, start: end - start)
+        if irq_pin is not None:
+            irq_pin.irq(trigger=2, handler=self._on_touch_irq)
+
+    def _on_touch_irq(self, _pin):
+        self.irq_sequence = (self.irq_sequence + 1) & 0xffff
 
     def poll_event(self):
-        """Read documented gesture/finger/coordinate registers at 0x01..0x06.
-
-        Fallback swipe detection uses finger-down/move/up positions. A touch is
-        not treated as a tap at press time, so swiping cannot switch a world
-        accidentally before it is recognized. Physical tuning is pending.
-        """
+        """Emit one event after release, using movement before the gesture latch."""
+        sequence = self.irq_sequence
+        pending = sequence != self.polled_irq_sequence
+        self.polled_irq_sequence = sequence
         data = self.i2c.readfrom_mem(self.ADDRESS, 0x01, 6)
-        gesture = self.GESTURES.get(data[0])
+        code = data[0]
+        gesture = self.GESTURES.get(code)
         down = (data[1] & 0x0f) == 1
         x = ((data[2] & 15) << 8) | data[3]
         y = ((data[4] & 15) << 8) | data[5]
         valid = x < WIDTH and y < HEIGHT
+        now = self.now_ms()
         if down:
             if not self.was_down:
                 self.start = (x, y) if valid else None
-                self.reported = False
-                self.ignore_late_gesture = False
+                self.start_gesture = code
+                self.started_at = now
             if valid:
                 self.last_point = (x, y)
             self.was_down = True
-            if gesture and not self.reported:
-                self.reported = True
-                return gesture
             return None
         if self.was_down:
             self.was_down = False
             self.ignore_late_gesture = True
-            if self.reported:
-                self.reported = False
-                return None
-            if gesture:
-                return gesture
+            self.last_event_at = now
             if self.start is None or self.last_point is None:
                 return None
+            # Only use the release coordinate when the controller marks it UP.
+            # An all-zero idle report contains no endpoint.
+            if valid and (data[2] >> 6) == 1:
+                self.last_point = (x, y)
             dx = self.last_point[0] - self.start[0]
             dy = self.last_point[1] - self.start[1]
             if abs(dx) >= 36 and abs(dx) > abs(dy) * 1.3:
                 return "swipe_left" if dx < 0 else "swipe_right"
             if abs(dy) >= 36 and abs(dy) > abs(dx) * 1.3:
                 return "swipe_up" if dy < 0 else "swipe_down"
-            return "tap"
+            elapsed = self.diff_ms(now, self.started_at)
+            if max(abs(dx), abs(dy)) < 18:
+                if elapsed >= 650:
+                    return "long_press"
+                if gesture and code != self.start_gesture:
+                    return gesture
+                return "tap"
+            return None
+        # Fast gestures can finish between polls. An IRQ distinguishes a new
+        # contact from the unchanged direction code left in the IC's register.
+        if self.irq_pin is not None:
+            if not pending:
+                return None
+            if self.last_event_at is not None and self.diff_ms(now, self.last_event_at) < 250:
+                return None
+            self.last_event_at = now
+            return gesture
         if gesture and not self.ignore_late_gesture:
             self.ignore_late_gesture = True
             return gesture
@@ -472,14 +499,15 @@ class BatteryGauge:
 
 
 class RoundScreen:
-    def __init__(self, driver, i2c=None, touch_reset_pin=None, battery=None):
+    def __init__(self, driver, i2c=None, touch_reset_pin=None, battery=None,
+                 touch_irq_pin=None):
         self.driver = driver
         self.selected = "nature"
         self.water_area = "river"
         self.touch = None
         if i2c is not None:
             try:
-                self.touch = CST816Touch(i2c, touch_reset_pin)
+                self.touch = CST816Touch(i2c, touch_reset_pin, touch_irq_pin)
             except (OSError, ValueError):
                 pass
         self.battery = battery

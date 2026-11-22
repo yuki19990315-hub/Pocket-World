@@ -316,7 +316,8 @@ class RoundScreenTest(unittest.TestCase):
 
     def test_touch_distinguishes_tap_swipe_and_chip_gestures(self):
         bus = I2C()
-        touch = CST816Touch(bus)
+        now = [0]
+        touch = CST816Touch(bus, clock_ms=lambda: now[0])
         self.assertIn((0x15, 0xFE, b"\x01"), bus.writes)
         self.assertIsNone(touch.poll_event())
         self.assertIsNone(touch.poll_event())
@@ -330,8 +331,51 @@ class RoundScreenTest(unittest.TestCase):
         bus.value = b"\x00\x00\x00\x00\x00\x00"
         self.assertEqual(touch.poll_event(), "swipe_right")
         bus.value = b"\x0c\x01\x00\x40\x00\x50"
-        self.assertEqual(touch.poll_event(), "long_press")
+        self.assertIsNone(touch.poll_event())
+        now[0] = 700
         bus.value = b"\x00\x00\x00\x00\x00\x00"
+        self.assertEqual(touch.poll_event(), "long_press")
+
+    def test_swipe_coordinates_override_stale_gesture_and_wait_for_release(self):
+        bus = I2C()
+        touch = CST816Touch(bus)
+        # The previous right-swipe code remains latched during a new left swipe.
+        bus.value = b"\x04\x01\x00\xb4\x00\x78"
+        self.assertIsNone(touch.poll_event())
+        bus.value = b"\x04\x01\x00\x3c\x00\x78"
+        self.assertIsNone(touch.poll_event())
+        bus.value = b"\x04\x00\x00\x3c\x00\x78"
+        self.assertEqual(touch.poll_event(), "swipe_left")
+        self.assertIsNone(touch.poll_event())
+
+    def test_up_report_supplies_fast_swipe_endpoint(self):
+        bus = I2C()
+        touch = CST816Touch(bus)
+        bus.value = b"\x00\x01\x00\xb4\x00\x78"
+        self.assertIsNone(touch.poll_event())
+        bus.value = b"\x00\x00\x40\x3c\x00\x78"
+        self.assertEqual(touch.poll_event(), "swipe_left")
+
+    def test_irq_distinguishes_repeated_fast_swipes_from_sticky_idle(self):
+        class IRQ:
+            def irq(self, trigger, handler):
+                self.handler = handler
+
+        now = [0]
+        irq = IRQ()
+        bus = I2C()
+        touch = CST816Touch(bus, irq_pin=irq, clock_ms=lambda: now[0])
+        bus.value = b"\x03\x00\x00\x3c\x00\x78"
+        self.assertIsNone(touch.poll_event())
+        irq.handler(irq)
+        self.assertEqual(touch.poll_event(), "swipe_left")
+        self.assertIsNone(touch.poll_event())
+        now[0] = 100
+        irq.handler(irq)
+        self.assertIsNone(touch.poll_event())
+        now[0] = 500
+        irq.handler(irq)
+        self.assertEqual(touch.poll_event(), "swipe_left")
         self.assertIsNone(touch.poll_event())
 
     def test_swipes_switch_world_and_only_unlocked_water_areas(self):
