@@ -130,7 +130,9 @@ class RoundScreenTest(unittest.TestCase):
                     driver = Display()
                     screen = RoundScreen(driver)
                     self.assertTrue(screen.show(0, force=True))
-                    self.assertTrue(screen.show(0, force=True))
+                    with patch.object(round_screen, "valid_frame",
+                                      side_effect=AssertionError("Cached frame accessed flash")):
+                        self.assertTrue(screen.show(0, force=True))
                     self.assertEqual(len(calls), 1)
                     with open("assets/nature-young.dat", "wb") as file:
                         file.write(b"\x07\xe0" * (FRAME_SIZE // 2))

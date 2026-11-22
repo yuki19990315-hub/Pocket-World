@@ -613,9 +613,9 @@ class RoundScreen:
         if not self.visible:
             return False
         early_path, mature_path, alpha = self._art_frames(minutes, world)
-        if not (valid_frame(early_path) and valid_frame(mature_path)):
-            return False
         frame = self._get_frame(early_path, mature_path, alpha)
+        if frame is None and not (valid_frame(early_path) and valid_frame(mature_path)):
+            return False
         self.driver.window(0, 0, WIDTH, HEIGHT)
         self.driver.start_pixels()
         try:
@@ -663,6 +663,8 @@ class RoundScreen:
         cached = self.frame_cache.get(scene)
         if cached is not None and cached[0] == signature:
             return cached[1]
+        if not (valid_frame(early_path) and valid_frame(mature_path)):
+            return None
         try:
             with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
                 a = early.read(FRAME_SIZE)
@@ -697,8 +699,10 @@ class RoundScreen:
                     signature = (early, mature, alpha, self.lighting_phase)
                     cached = self.frame_cache.get(scene)
                     if cached is None or cached[0] != signature:
-                        self._get_frame(early, mature, alpha)
-                        return True
+                        if self._get_frame(early, mature, alpha) is not None:
+                            return True
+                        if self.frame_cache is None:
+                            return False
             return False
         finally:
             self.selected, self.water_area = selected, water_area
