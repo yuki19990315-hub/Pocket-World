@@ -229,6 +229,35 @@ class MainActivity : Activity() {
             }
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
         info(box, "タイルは壁紙の装飾です。実際のアプリアイコンは別に表示されます。通常のアイコンと重なる場合はタイルをOFFにしてください。")
+        box.addView(Switch(this).apply {
+            text = "時刻で配色を変える（昼・夕方・夜）"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            isChecked = WallpaperConfig.cyberTimeColors(prefs)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(WallpaperConfig.CYBER_TIME_COLORS, checked).apply()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        info(box, "ONのときはスマホの現在時刻に応じて配色が決まります。手動のデザイン選択はOFF時に使われます。")
+        box.addView(Switch(this).apply {
+            text = "実際のバッテリー残量をHUDに表示"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            isChecked = WallpaperConfig.cyberBattery(prefs)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(WallpaperConfig.CYBER_BATTERY, checked).apply()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        box.addView(Switch(this).apply {
+            text = "タップでネオンの波紋を出す"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            isChecked = WallpaperConfig.cyberRipples(prefs)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(WallpaperConfig.CYBER_RIPPLES, checked).apply()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+        info(box, "プレビューではタップ操作を試せます。壁紙にした後のタッチ反応はホームアプリが壁紙へタッチを渡す場合に限ります。")
         val preview = CyberPreviewView(this)
         box.addView(preview, LinearLayout.LayoutParams(dp(204), dp(453)).apply {
             gravity = Gravity.CENTER_HORIZONTAL

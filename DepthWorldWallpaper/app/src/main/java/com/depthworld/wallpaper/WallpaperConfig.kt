@@ -26,6 +26,9 @@ object WallpaperConfig {
     const val TILT_ENABLED = "tilt_enabled"
     const val CYBER_STYLE = "cyber_style"
     const val CYBER_TILES = "cyber_tiles"
+    const val CYBER_TIME_COLORS = "cyber_time_colors"
+    const val CYBER_BATTERY = "cyber_battery"
+    const val CYBER_RIPPLES = "cyber_ripples"
 
     const val CYBER = "cyber"
     const val FANTASY = "fantasy"
@@ -46,6 +49,9 @@ object WallpaperConfig {
     fun mode(prefs: SharedPreferences) = prefs.getString(MODE, CYBER) ?: CYBER
     fun cyberStyle(prefs: SharedPreferences) = prefs.getInt(CYBER_STYLE, 0).coerceIn(0, cyberStyleNames.lastIndex)
     fun cyberTiles(prefs: SharedPreferences) = prefs.getBoolean(CYBER_TILES, true)
+    fun cyberTimeColors(prefs: SharedPreferences) = prefs.getBoolean(CYBER_TIME_COLORS, false)
+    fun cyberBattery(prefs: SharedPreferences) = prefs.getBoolean(CYBER_BATTERY, true)
+    fun cyberRipples(prefs: SharedPreferences) = prefs.getBoolean(CYBER_RIPPLES, true)
     fun world(prefs: SharedPreferences) = prefs.getInt(WORLD, 0).coerceIn(0, worldIds.lastIndex)
     fun stage(prefs: SharedPreferences) = prefs.getInt(STAGE, 1).coerceIn(0, 1)
     fun lightPreset(prefs: SharedPreferences) = prefs.getInt(LIGHT_PRESET, 1).coerceIn(0, lightNames.lastIndex)

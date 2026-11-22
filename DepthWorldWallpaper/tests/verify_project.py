@@ -48,7 +48,7 @@ assert service.attrib[android_ns + "exported"] == "true"
 assert not manifest.findall("uses-permission"), "unexpected Android permission requested"
 dependencies = (ROOT / "app/build.gradle").read_text()
 assert "play-services-mlkit-subject-segmentation:16.0.0-beta1" in dependencies
-assert "versionName '0.5.0'" in dependencies
+assert "versionName '0.5.1'" in dependencies
 
 wrapper_jar = ROOT / "gradle/wrapper/gradle-wrapper.jar"
 wrapper_sha = hashlib.sha256(wrapper_jar.read_bytes()).hexdigest()
@@ -105,6 +105,10 @@ assert "WallpaperConfig.CYBER -> cyberSection" in activity_code
 cyber_code = (code_dir / "CyberCircuitRenderer.kt").read_text()
 assert "drawGlassTiles" in cyber_code and "drawCircuits" in cyber_code
 assert "tiles are decorative" in cyber_code
+assert "emitRipple" in cyber_code and "drawRipples" in cyber_code
+assert "BatteryManager.BATTERY_PROPERTY_CAPACITY" in engine_code
+for key in ("CYBER_TIME_COLORS", "CYBER_BATTERY", "CYBER_RIPPLES"):
+    assert f"WallpaperConfig.{key}" in activity_code
 
 print("OK: XML, Gradle wrapper/checksums, cyber-glass renderer and preview, video controls/AI mask smoothing, battery handling, source files, PNG assets, 16 PocketWorld scenes, no permissions")
 print("NOTE: Android SDK compile, APK installation, orientation and battery testing remain unverified")

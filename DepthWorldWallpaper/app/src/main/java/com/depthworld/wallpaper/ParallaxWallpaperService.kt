@@ -15,6 +15,7 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -39,6 +40,7 @@ class ParallaxWallpaperService : WallpaperService() {
         private val prefs = WallpaperConfig.preferences(this@ParallaxWallpaperService)
         private val sensors = getSystemService(SENSOR_SERVICE) as SensorManager
         private val power = getSystemService(POWER_SERVICE) as PowerManager
+        private val battery = getSystemService(BATTERY_SERVICE) as BatteryManager
         private val sensor: Sensor? = sensors.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
             ?: sensors.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
             ?: sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
@@ -55,6 +57,8 @@ class ParallaxWallpaperService : WallpaperService() {
         private var foreground: Bitmap? = null
         private var videoFrames: VideoFrames? = null
         private var videoStartUptime = 0L
+        private var batteryCheckedAt = -60_000L
+        private var batteryPercent: Int? = null
 
         private var tiltX = 0f
         private var tiltY = 0f
@@ -204,14 +208,28 @@ class ParallaxWallpaperService : WallpaperService() {
         }
 
         override fun onTouchEvent(event: MotionEvent) {
-            if (!prefs.getBoolean(WallpaperConfig.TOUCH, true)) return
+            val moving = prefs.getBoolean(WallpaperConfig.TOUCH, true)
+            val rippling = WallpaperConfig.mode(prefs) == WallpaperConfig.CYBER &&
+                WallpaperConfig.cyberRipples(prefs)
+            if (!moving && !rippling) return
             val width = max(1, surfaceHolder.surfaceFrame.width()).toFloat()
             val height = max(1, surfaceHolder.surfaceFrame.height()).toFloat()
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                    touching = true
-                    touchX = ((event.x / width) * 2f - 1f).coerceIn(-1f, 1f)
-                    touchY = ((event.y / height) * 2f - 1f).coerceIn(-1f, 1f)
+                MotionEvent.ACTION_DOWN -> {
+                    if (rippling) cyberRenderer.emitRipple(event.x / width, event.y / height,
+                        SystemClock.uptimeMillis() / 1000f)
+                    if (moving) {
+                        touching = true
+                        touchX = ((event.x / width) * 2f - 1f).coerceIn(-1f, 1f)
+                        touchY = ((event.y / height) * 2f - 1f).coerceIn(-1f, 1f)
+                    }
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    if (moving) {
+                        touching = true
+                        touchX = ((event.x / width) * 2f - 1f).coerceIn(-1f, 1f)
+                        touchY = ((event.y / height) * 2f - 1f).coerceIn(-1f, 1f)
+                    }
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> touching = false
             }
@@ -304,7 +322,10 @@ class ParallaxWallpaperService : WallpaperService() {
                 when (WallpaperConfig.mode(prefs)) {
                     WallpaperConfig.CYBER -> cyberRenderer.draw(canvas, w, h, tx, ty, time,
                         WallpaperConfig.cyberStyle(prefs), 1f, WallpaperConfig.glow(prefs),
-                        WallpaperConfig.cyberTiles(prefs))
+                        WallpaperConfig.cyberTiles(prefs),
+                        WallpaperConfig.cyberTimeColors(prefs), WallpaperConfig.cyberBattery(prefs),
+                        if (WallpaperConfig.cyberBattery(prefs)) currentBatteryPercent() else null,
+                        WallpaperConfig.cyberRipples(prefs))
                     WallpaperConfig.VIDEO -> drawVideo(canvas, w, h, tx, ty, time, breathing)
                     WallpaperConfig.CUSTOM -> drawCustom(canvas, w, h, tx, ty, time, breathing)
                     WallpaperConfig.POCKET -> drawPocket(canvas, w, h, tx, ty, time, breathing)
@@ -321,6 +342,16 @@ class ParallaxWallpaperService : WallpaperService() {
                     try { surfaceHolder.unlockCanvasAndPost(canvas) } catch (_: Exception) { }
                 }
             }
+        }
+
+        private fun currentBatteryPercent(): Int? {
+            val now = SystemClock.uptimeMillis()
+            if (now - batteryCheckedAt >= 60_000L) {
+                batteryCheckedAt = now
+                val percent = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+                batteryPercent = percent.takeIf { it in 1..100 }
+            }
+            return batteryPercent
         }
 
         private fun drawFantasy(canvas: Canvas, w: Float, h: Float, tx: Float, ty: Float,

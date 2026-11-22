@@ -10,6 +10,7 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import kotlin.math.cos
@@ -27,6 +28,9 @@ class CyberCircuitRenderer {
     private var shownMinute = -1L
     private var clockText = "00:00"
     private var dateText = ""
+    private var currentHour = 12
+    private data class EnergyRipple(val x: Float, val y: Float, val started: Float)
+    private val ripples = ArrayList<EnergyRipple>(6)
 
     private val neon = intArrayOf(
         Color.rgb(91, 239, 186), Color.rgb(255, 208, 67),
@@ -34,26 +38,40 @@ class CyberCircuitRenderer {
         Color.rgb(152, 124, 255), Color.rgb(255, 128, 76)
     )
 
+    fun emitRipple(xRatio: Float, yRatio: Float, time: Float) {
+        if (ripples.size >= 6) ripples.removeAt(0)
+        ripples.add(EnergyRipple(xRatio.coerceIn(0f, 1f) * 1080f,
+            yRatio.coerceIn(0f, 1f) * 2400f, time))
+    }
+
     fun draw(canvas: Canvas, width: Float, height: Float, tx: Float, ty: Float,
-             time: Float, style: Int, intensity: Float, glow: Float, tiles: Boolean) {
+             time: Float, style: Int, intensity: Float, glow: Float, tiles: Boolean,
+             autoColors: Boolean = false, showBattery: Boolean = false,
+             batteryPercent: Int? = null, showRipples: Boolean = true) {
         if (width <= 0 || height <= 0) return
+        updateClock()
         val save = canvas.save()
         canvas.scale(width / 1080f, height / 2400f)
         val x = tx.coerceIn(-2f, 2f) * intensity
         val y = ty.coerceIn(-2f, 2f) * intensity
         val pulse = 0.83f + sin(time * 1.1f) * .17f
-        val warm = when (style) {
+        val palette = if (autoColors) when (currentHour) {
+            in 6..15 -> 1 // daylight: cool aurora
+            in 16..19 -> 0 // sunset: orange-violet
+            else -> 2 // night: emerald and cyan
+        } else style
+        val warm = when (palette) {
             1 -> Color.rgb(74, 188, 255)
             2 -> Color.rgb(116, 255, 183)
             else -> Color.rgb(255, 127, 63)
         }
-        val cool = when (style) {
+        val cool = when (palette) {
             1 -> Color.rgb(189, 102, 255)
             2 -> Color.rgb(56, 230, 229)
             else -> Color.rgb(190, 89, 248)
         }
 
-        drawBase(canvas, warm, cool, style, time, glow)
+        drawBase(canvas, warm, cool, palette, time, glow)
         canvas.save()
         canvas.translate(x * 22f, y * 22f)
         drawCircuits(canvas, warm, cool, time, glow)
@@ -66,13 +84,25 @@ class CyberCircuitRenderer {
 
         canvas.save()
         canvas.translate(-x * 83f, -y * 68f)
-        drawHeader(canvas, warm, cool, time, pulse, glow)
-        if (tiles) drawGlassTiles(canvas, warm, cool, style, time, pulse, glow)
+        drawHeader(canvas, warm, cool, time, pulse, glow, showBattery, batteryPercent)
+        if (tiles) drawGlassTiles(canvas, warm, cool, palette, time, pulse, glow)
         else drawOpenCircuit(canvas, warm, cool, time, glow)
         canvas.restore()
 
         drawDust(canvas, time, glow)
+        if (showRipples) drawRipples(canvas, time, warm, cool, glow)
         canvas.restoreToCount(save)
+    }
+
+    private fun updateClock() {
+        val minute = System.currentTimeMillis() / 60_000L
+        if (shownMinute == minute) return
+        shownMinute = minute
+        val now = Date()
+        currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        clockText = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
+        dateText = SimpleDateFormat("EEE  dd  MMM", Locale.getDefault())
+            .format(now).uppercase(Locale.getDefault())
     }
 
     private fun drawBase(c: Canvas, warm: Int, cool: Int, style: Int, time: Float, glow: Float) {
@@ -163,14 +193,8 @@ class CyberCircuitRenderer {
     }
 
     private fun drawHeader(c: Canvas, warm: Int, cool: Int,
-                           time: Float, pulse: Float, glow: Float) {
-        val minute = System.currentTimeMillis() / 60_000L
-        if (shownMinute != minute) {
-            shownMinute = minute
-            val now = Date()
-            clockText = SimpleDateFormat("HH:mm", Locale.getDefault()).format(now)
-            dateText = SimpleDateFormat("EEE  dd  MMM", Locale.getDefault()).format(now).uppercase(Locale.getDefault())
-        }
+                           time: Float, pulse: Float, glow: Float,
+                           showBattery: Boolean, batteryPercent: Int?) {
         val board = RectF(126f, 295f, 948f, 746f)
         glass(c, board, warm, cool, .72f * glow)
         brush.typeface = displayFont
@@ -197,6 +221,46 @@ class CyberCircuitRenderer {
             val x = 566f + i * 17f
             val height = 28f + (sin(i * .75f + time * 1.2f) + 1f) * 21f
             line(c, x, 645f - height, x, 645f, tone(warm, (.27f + height / 120f) * glow), 6f)
+        }
+        if (showBattery) {
+            val capacity = batteryPercent?.takeIf { it in 0..100 }
+            val tint = if (capacity != null && capacity <= 20) Color.rgb(255, 106, 96) else cool
+            text(c, "POWER  ${capacity?.let { "$it%" } ?: "--"}",
+                564f, 697f, 27f, tint, .88f)
+            val track = RectF(737f, 671f, 891f, 690f)
+            brush.color = tone(tint, .18f)
+            c.drawRoundRect(track, 8f, 8f, brush)
+            if (capacity != null && capacity > 0) {
+                brush.color = tone(tint, .90f)
+                c.drawRoundRect(RectF(track.left, track.top,
+                    track.left + track.width() * capacity / 100f, track.bottom), 8f, 8f, brush)
+            }
+        }
+    }
+
+    private fun drawRipples(c: Canvas, time: Float, warm: Int, cool: Int, glow: Float) {
+        val iterator = ripples.iterator()
+        while (iterator.hasNext()) {
+            val ring = iterator.next()
+            val age = time - ring.started
+            if (age < 0f || age > 1.15f) {
+                iterator.remove()
+                continue
+            }
+            val life = (1f - age / 1.15f).coerceIn(0f, 1f)
+            val color = if (ring.x < 540f) cool else warm
+            val radius = 18f + age * 560f
+            brush.style = Paint.Style.STROKE
+            brush.strokeWidth = 19f * life + 3f
+            brush.color = tone(color, .16f * life * glow)
+            c.drawCircle(ring.x, ring.y, radius, brush)
+            brush.strokeWidth = 3.5f
+            brush.color = tone(color, .91f * life * glow)
+            c.drawCircle(ring.x, ring.y, radius, brush)
+            brush.color = tone(Color.WHITE, .53f * life * glow)
+            c.drawCircle(ring.x, ring.y, radius * .53f, brush)
+            brush.style = Paint.Style.FILL
+            dot(c, ring.x, ring.y, 9f * life + 1f, color, .72f * life * glow)
         }
     }
 
