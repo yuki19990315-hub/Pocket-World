@@ -55,7 +55,7 @@ def configure_wifi():
     import network
     ap = network.WLAN(network.AP_IF)
     ap.active(True)
-    ap.config(essid=settings.AP_SSID, password=settings.AP_PASSWORD)
+    ap.config(essid=settings.AP_SSID, password=settings.AP_PASSWORD, security=3)
     print("Phone AP:", settings.AP_SSID, "address:", ap.ifconfig()[0])
 
     if settings.STA_SSID:
@@ -140,6 +140,18 @@ def load_display_selection(screen):
             return
         except (OSError, ValueError, KeyError, TypeError):
             pass
+
+
+def save_display_when_idle(screen, pending_since, now_ms):
+    """Coalesce physical mode changes after five seconds without interaction."""
+    if pending_since is None:
+        return None
+    if screen.touch is not None and screen.touch.was_down:
+        return now_ms
+    if now_ms - pending_since < 5000:
+        return pending_since
+    save_display_selection(screen.selected, screen.water_area, screen.brightness_setting)
+    return None
 
 
 def sync_screen_schedule(screen, power, engine):
@@ -304,10 +316,10 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
             screen.choose(data["world"])
             if area is not None:
                 screen.choose_water_area(area)
-            save_display_selection(screen.selected, screen.water_area,
-                                   screen.brightness_setting)
             screen.show(engine.worlds[screen.selected]["minutes"], force=True,
                         world=engine.worlds[screen.selected])
+            save_display_selection(screen.selected, screen.water_area,
+                                   screen.brightness_setting)
             response(client, "200 OK", "application/json", json.dumps(screen.status()))
         except (ValueError, OSError, TypeError) as exc:
             response(client, "400 Bad Request", "application/json",
@@ -386,6 +398,8 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
             length = int(headers.get("content-length", "-1"))
             filename = headers.get("x-file-name", "")
             count = receive_update(filename, length, body, client)
+            if screen is not None and filename.startswith("assets/"):
+                screen.invalidate_frames()
             response(client, "200 OK", "application/json",
                      json.dumps({"ok": True, "file": filename, "bytes": count,
                                  "restart_required": filename.endswith(".py")}))
@@ -433,7 +447,8 @@ def main():
                 print("Battery ADC unavailable:", exc)
                 battery = None
             touch_reset = machine.Pin(13, machine.Pin.OUT, value=1)
-            screen = RoundScreen(driver, bus, touch_reset, battery)
+            touch_irq = machine.Pin(5, machine.Pin.IN, machine.Pin.PULL_UP)
+            screen = RoundScreen(driver, bus, touch_reset, battery, touch_irq)
             load_display_selection(screen)
             if not screen.show(engine.worlds[screen.selected]["minutes"], force=True,
                                world=engine.worlds[screen.selected]):
@@ -464,7 +479,7 @@ def main():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(address)
     server.listen(2)
-    server.settimeout(0.12)
+    server.settimeout(0.02)
     print("Sanny Pocket World ready on http://192.168.4.1/")
 
     previous = time.ticks_ms()
@@ -478,6 +493,7 @@ def main():
     mic_ms = 0
     mic_react_ms = 60000  # First confirmed sample can create one event.
     uptime_ms = 0
+    pending_display_save = None
     while True:
         now = time.ticks_ms()
         delta = max(0, time.ticks_diff(now, previous))
@@ -506,15 +522,16 @@ def main():
             except OSError as exc:
                 print("Motion read failed, disabling sensor:", exc)
                 sensor = None
-        if screen is not None and touch_ms >= 160:
-            touch_ms %= 160
+        if screen is not None and touch_ms >= 20:
+            touch_ms %= 20
             try:
                 action = screen.poll_touch(engine)
+                if action is not None and pending_display_save is not None:
+                    pending_display_save = uptime_ms
                 if action is not None and action[0] in ("world", "area"):
-                    save_display_selection(screen.selected, screen.water_area,
-                                           screen.brightness_setting)
                     screen.show(engine.worlds[screen.selected]["minutes"], force=True,
                                 world=engine.worlds[screen.selected])
+                    pending_display_save = uptime_ms
                 elif action is not None and action[0] == "tap":
                     if engine.tap(screen.selected):
                         save_worlds(engine)
@@ -562,10 +579,23 @@ def main():
             save_worlds(engine)
             since_save = 0
         if power.plan_sleep() is not None:
+            if screen is not None and pending_display_save is not None:
+                save_display_selection(screen.selected, screen.water_area,
+                                       screen.brightness_setting)
+                pending_display_save = None
             enter_sleep(engine, power, sensor, ap, microphone, screen)
         try:
             client, _ = server.accept()
         except OSError:
+            if screen is not None:
+                try:
+                    pending_display_save = save_display_when_idle(
+                        screen, pending_display_save, uptime_ms)
+                    screen.warm_next_frame(engine)
+                except (OSError, ValueError, MemoryError) as exc:
+                    if pending_display_save is not None:
+                        pending_display_save = uptime_ms
+                    print("Display background update failed:", exc)
             continue
         result = False
         try:
@@ -579,6 +609,9 @@ def main():
             client.close()
             gc.collect()
         if result == "restart":
+            if screen is not None and pending_display_save is not None:
+                save_display_selection(screen.selected, screen.water_area,
+                                       screen.brightness_setting)
             save_worlds(engine)
             time.sleep_ms(400)
             import machine

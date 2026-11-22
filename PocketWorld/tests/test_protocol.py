@@ -32,6 +32,31 @@ def request(method, path, headers=None, body=b""):
 
 
 class TestProtocol(unittest.TestCase):
+    def test_physical_selection_saves_latest_mode_after_idle(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        screen = SimpleNamespace(selected="nature", water_area="river",
+                                 brightness_setting=65,
+                                 touch=SimpleNamespace(was_down=False))
+        with patch.object(main, "save_display_selection") as save:
+            self.assertIsNone(main.save_display_when_idle(screen, None, 100))
+            pending = 0
+            self.assertEqual(main.save_display_when_idle(screen, pending, 400), 0)
+            screen.selected = "city"
+            pending = 400
+            self.assertEqual(main.save_display_when_idle(screen, pending, 1000), 400)
+            screen.selected = "forest"
+            pending = 1000
+            screen.touch.was_down = True
+            pending = main.save_display_when_idle(screen, pending, 7000)
+            self.assertEqual(pending, 7000)
+            save.assert_not_called()
+            screen.touch.was_down = False
+            self.assertEqual(main.save_display_when_idle(screen, pending, 11999), pending)
+            self.assertIsNone(main.save_display_when_idle(screen, pending, 12000))
+            save.assert_called_once_with("forest", "river", 65)
+
     def setUp(self):
         self.engine = PocketWorld()
         self.original = settings.ADMIN_KEY

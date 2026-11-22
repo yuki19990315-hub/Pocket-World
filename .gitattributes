@@ -1,0 +1,3 @@
+# Raw big-endian RGB565 frames (not text; every byte is display pixel data).
+PocketWorld/firmware/assets/*.dat binary
+SannyCompanionAndroid/app/src/main/assets/world_pack/*.dat binary

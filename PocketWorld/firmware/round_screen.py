@@ -1,9 +1,8 @@
 """GC9A01A round LCD + CST816S touch for Waveshare ESP32-S3-Touch-LCD-1.28.
 
-Device RGB565 artwork is streamed from /assets, one scanline at a time;
-no 115KB framebuffer or PNG decoder is required. Only the display controller
-has been simulated on CPython so far: actual SPI orientation/colour and touch
-must still be checked on the user's board before enabling deep sleep.
+Device RGB565 artwork uses native blending and up to eight cached frames
+when MicroPython and memory are available. A scanline path supports smaller
+heaps and PC tests. Display orientation and touch require device validation.
 
 Pin map: https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.28
 GC9A01A initialization command data adapted from Adafruit_GC9A01A (BSD).
@@ -12,6 +11,53 @@ See THIRD_PARTY_NOTICES.md for attribution.
 
 import time
 
+try:
+    import micropython
+except ImportError:
+    micropython = None
+
+
+_compose_pixels = None
+if micropython is not None:
+    @micropython.viper
+    def _compose_pixels(destination, early, late, settings):
+        """Blend and light RGB565 pixels using native integer arithmetic."""
+        output = ptr8(destination)
+        first = ptr8(early)
+        second = ptr8(late)
+        length = int(len(destination))
+        alpha = int(settings[0])
+        phase = int(settings[1])
+        for offset in range(0, length, 2):
+            a = (first[offset] << 8) | first[offset + 1]
+            b = (second[offset] << 8) | second[offset + 1]
+            red = (((a >> 11) & 31) * (255 - alpha) +
+                   ((b >> 11) & 31) * alpha + 127) // 255
+            green = (((a >> 5) & 63) * (255 - alpha) +
+                     ((b >> 5) & 63) * alpha + 127) // 255
+            blue = ((a & 31) * (255 - alpha) + (b & 31) * alpha + 127) // 255
+            if phase == 1:
+                red = red * 108 // 100 + 1
+                green = green * 93 // 100
+                blue = blue * 79 // 100
+            elif phase == 2:
+                red = red * 105 // 100 + 2
+                green = green * 72 // 100
+                blue = blue * 65 // 100
+            elif phase == 3:
+                red = red * 36 // 100
+                green = green * 40 // 100
+                blue = blue * 65 // 100 + 1
+            elif phase == 4:
+                red = red * 17 // 100
+                green = green * 18 // 100
+                blue = blue * 27 // 100
+            if red > 31:
+                red = 31
+            color = (red << 11) | (green << 5) | blue
+            output[offset] = color >> 8
+            output[offset + 1] = color & 255
+
 WIDTH = 240
 HEIGHT = 240
 WORLD_IDS = ("nature", "city", "hybrid", "fantasy", "forest", "aquarium")
@@ -19,6 +65,32 @@ WATER_AREAS = ("river", "ocean", "deepsea")
 FRAME_SIZE = WIDTH * HEIGHT * 2
 TOWN_FULL_HOUSES = 14  # 1 starter home + the 13 scheduled construction events.
 TOWN_VISIBLE_RESIDENTS = 18
+HYBRID_MID_MINUTES = 10 * 1440
+HYBRID_MATURE_MINUTES = 30 * 1440
+# Landmark pixels shared by all three matched hybrid backgrounds.
+# These are inside the circular LCD and on the same land/water features.
+HYBRID_LEAVES = ((54, 45), (72, 51), (84, 61))
+HYBRID_LAKE = ((150, 161), (177, 169), (190, 183), (165, 197))
+HYBRID_FALLS = ((132, 119), (140, 138))
+# Landmarks checked against the matching 240x240 young/mature illustrations.
+# Ripples drift sideways; waterfall drops move downward. Aquarium zones are
+# entirely underwater and use rising bubbles instead of surface ripples.
+WATER_RIPPLES = {
+    "nature": ((176, 113), (186, 137)),
+    "city": ((174, 195), (177, 202), (181, 189)),
+    "hybrid": HYBRID_LAKE,
+    "fantasy": ((112, 130), (154, 127)),
+    "forest": ((104, 210), (140, 219)),
+}
+WATER_FALLS = {
+    "nature": ((189, 174), (194, 188)),
+    "city": ((181, 161),),
+    "hybrid": HYBRID_FALLS,
+    "fantasy": ((131, 162), (131, 188), (128, 209)),
+    "forest": ((120, 137), (125, 164), (121, 185)),
+}
+UNDERWATER_BUBBLES = ((75, 110), (103, 169), (158, 142), (184, 94),
+                       (123, 195), (52, 137))
 
 
 def town_art_alpha(minutes, houses=None):
@@ -32,6 +104,17 @@ def town_art_alpha(minutes, houses=None):
     return min(255, max(0, (int(houses) - 1) * 255 // (TOWN_FULL_HOUSES - 1)))
 
 
+def hybrid_art_frames(minutes):
+    """Three illustrated ages, streamed as two RGB565 frames at a time."""
+    minute = max(0, int(minutes))
+    if minute < HYBRID_MID_MINUTES:
+        return ("assets/hybrid-young.dat", "assets/hybrid-mid.dat",
+                minute * 255 // HYBRID_MID_MINUTES)
+    return ("assets/hybrid-mid.dat", "assets/hybrid-mature.dat",
+            min(255, (minute - HYBRID_MID_MINUTES) * 255 //
+                (HYBRID_MATURE_MINUTES - HYBRID_MID_MINUTES)))
+
+
 def town_people(count, tick, tilt_x=0, tilt_y=0):
     """Deterministic 1x3 pedestrians along the town's winding central path."""
     positions = []
@@ -42,6 +125,136 @@ def town_people(count, tick, tilt_x=0, tilt_y=0):
         y = 157 + (i * 29) % 49 + ((tick // 5 + i) % 3) + tilt_y
         positions.append((x, y))
     return positions
+
+
+def hybrid_people(count, tick, tilt_x=0, tilt_y=0):
+    """Walk on the western terraces; the lake occupies the eastern foreground."""
+    positions = []
+    for i in range(min(TOWN_VISIBLE_RESIDENTS, max(0, int(count)))):
+        phase = (tick + i * 7) % 24
+        step = phase if phase < 12 else 24 - phase
+        x = 40 + (i * 17) % 50 + step + tilt_x
+        y = 108 + (i * 23) % 56 + ((tick // 5 + i) % 3) + tilt_y
+        positions.append((x, y))
+    return positions
+
+
+def hybrid_ambient_particles(tick, phase="day", weather="sunny",
+                             tilt_x=0, tilt_y=0, shaking=False):
+    """Subtle leaf sway and water shimmer, without repainting the scenery.
+
+    Each result is (x, y, square size, RGB565). Animate() restores the
+    underlying RGB565 pixels before redrawing the next positions.
+    """
+    if phase == "lights_out":
+        return []
+    windy = weather in ("windy", "rain")
+    pace = 2 if windy else 4
+    bright = phase in ("day", "dawn")
+    leaf_color = 0xB6D4 if bright else 0x3349
+    water_color = 0xD7FE if bright else 0x42B5
+    falls_color = 0xBFFF if bright else 0x3A53
+    if shaking:
+        leaf_color = water_color = falls_color = 0xFFFF
+    particles = []
+    for index, (base_x, base_y) in enumerate(HYBRID_LEAVES):
+        sway = ((tick // pace + index) % 3) - 1
+        particles.append((base_x + sway * (2 if windy else 1) + tilt_x,
+                          base_y + tilt_y, 2, leaf_color))
+    for index, (base_x, base_y) in enumerate(HYBRID_LAKE):
+        shimmer = ((tick + 2 * index) % 3) - 1
+        particles.append((base_x + shimmer + tilt_x,
+                          base_y + (tick + index) % 2 + tilt_y, 2, water_color))
+    for index, (base_x, base_y) in enumerate(HYBRID_FALLS):
+        particles.append((base_x + tilt_x,
+                          base_y + (tick + index * 3) % 3 + tilt_y,
+                          1, falls_color))
+    return particles
+
+
+def water_ambient_particles(art_id, tick, phase="day", weather="sunny",
+                            tilt_x=0, tilt_y=0, shaking=False, growth=1):
+    """Move tiny highlights along the painted water, not over arbitrary land.
+
+    `growth` is the illustrated background cross-fade (0..1). Nature's
+    youngest meadow has a brown stream bed, so blue water emerges gradually.
+    """
+    if phase == "lights_out" or (art_id == "nature" and growth < .3):
+        return []
+    bright = phase in ("day", "dawn")
+    ripple = 0xD7FE if bright else 0x42B5
+    falls = 0xBFFF if bright else 0x3A53
+    if art_id == "deepsea":
+        ripple = 0x6558 if bright else 0x3254
+    if shaking:
+        ripple = falls = 0xFFFF
+    pace = 2 if weather in ("rain", "windy") else 1
+    particles = []
+    if art_id in ("aquarium", "river", "deepsea"):
+        # The whole canvas is water. Rise within six narrow bubble columns.
+        for i, (x, y) in enumerate(UNDERWATER_BUBBLES):
+            particles.append((x + (tick + i) % 3 - 1 + tilt_x,
+                              y - (tick * pace * 2 + i * 3) % 22 + tilt_y,
+                              1 if i % 2 else 2, ripple))
+        for i, (x, y) in enumerate(((105, 35), (152, 46), (178, 63))):
+            particles.append((x + (tick + i * 2) % 5 - 2 + tilt_x,
+                              y + tilt_y, 1, ripple))
+        return particles
+    for i, (x, y) in enumerate(WATER_RIPPLES.get(art_id, ())):
+        particles.append((x + (tick * pace + i * 2) % 5 - 2 + tilt_x,
+                          y + (tick + i) % 2 + tilt_y, 2, ripple))
+    if art_id != "nature" or growth >= .55:
+        for i, (x, y) in enumerate(WATER_FALLS.get(art_id, ())):
+            particles.append((x + tilt_x,
+                              y + (tick * pace + i * 3) % 6 + tilt_y,
+                              1, falls))
+    return particles
+
+
+def nature_ambient_particles(tick, phase="day", weather="sunny",
+                             tilt_x=0, tilt_y=0, shaking=False, growth=1):
+    """Leaves, butterflies, distant birds, fireflies and the growing river."""
+    if phase == "lights_out":
+        return []
+    windy = weather in ("windy", "rain")
+    bright = phase in ("day", "dawn")
+    color_leaf = 0xC706 if bright else 0x4389
+    color_butterfly = 0xFDF1 if bright else 0xB3B7
+    color_bird = 0xFFFF if bright else 0x9D3D
+    if shaking:
+        color_leaf = color_butterfly = color_bird = 0xFFFF
+    # The young illustration contains one small sapling at this coordinate.
+    particles = [(111 + ((tick // (2 if windy else 4)) % 3 - 1) + tilt_x,
+                  66 + tilt_y, 1, color_leaf)]
+    if growth >= .2:
+        for i, (x, y) in enumerate(((68, 54), (103, 39), (149, 69))):
+            sway = (tick // (2 if windy else 4) + i) % 3 - 1
+            particles.append((x + sway * (2 if windy else 1) + tilt_x,
+                              y + tilt_y, 2, color_leaf))
+        for i, (x, y) in enumerate(((67, 70), (97, 75), (138, 84))):
+            # A few leaves float down from the canopy toward the meadow.
+            particles.append((x + (tick * (2 if windy else 1) + i) % 7 - 3 + tilt_x,
+                              y + (tick + i * 7) % 19 + tilt_y,
+                              1, color_leaf))
+        for i in range(3):
+            # Flower-height butterfly tracks stay on the island's grassy top.
+            x = 58 + i * 40 + (tick * (2 if windy else 1) + i * 5) % 19
+            y = 116 + i * 8 + (tick + i * 3) % 5 - 2
+            particles.append((x + tilt_x, y + tilt_y, 2, color_butterfly))
+        for i in range(2):
+            x = 37 + i * 105 + (tick + i * 3) % 23
+            y = 34 + i * 5 + (tick + i) % 3 - 1
+            particles.append((x + tilt_x, y + tilt_y, 1, color_bird))
+    if phase in ("night", "dusk"):
+        for i, (x, y) in enumerate(((77, 146), (127, 114), (163, 124),
+                                    (111, 153))):
+            firefly = 0xFFE0 if (tick + i) % 3 else 0x8B60
+            particles.append((x + (tick + i) % 3 - 1 + tilt_x,
+                              y + (tick + 2 * i) % 3 - 1 + tilt_y,
+                              1, 0xFFFF if shaking else firefly))
+    particles.extend(water_ambient_particles("nature", tick, phase, weather,
+                                              tilt_x, tilt_y, shaking, growth))
+    return particles
 
 
 def blend_row(early, late, alpha):
@@ -134,7 +347,7 @@ class GC9A01:
             (0x86, b"\xff"), (0x87, b"\xff"), (0x88, b"\x0a"),
             (0x89, b"\x21"), (0x8A, b"\x00"), (0x8B, b"\x80"),
             (0x8C, b"\x01"), (0x8D, b"\x01"), (0x8E, b"\xff"),
-            (0x8F, b"\xff"), (0xB6, b"\x00\x00"), (0x36, b"\x48"),
+            (0x8F, b"\xff"), (0xB6, b"\x00\x00"), (0x36, b"\x40"),
             (0x3A, b"\x05"), (0x90, b"\x08\x08\x08\x08"),
             (0xBD, b"\x06"), (0xBC, b"\x00"), (0xFF, b"\x60\x01\x04"),
             (0xC3, b"\x13"), (0xC4, b"\x13"), (0xC9, b"\x22"),
@@ -210,62 +423,91 @@ class CST816Touch:
                 4: "swipe_right", 5: "tap", 11: "double_tap",
                 12: "long_press"}
 
-    def __init__(self, i2c, reset_pin=None):
+    def __init__(self, i2c, reset_pin=None, irq_pin=None, clock_ms=None):
         self.i2c = i2c
         if reset_pin is not None:
             reset_pin.value(0)
             getattr(time, "sleep_ms", lambda ms: time.sleep(ms / 1000))(12)
             reset_pin.value(1)
+            getattr(time, "sleep_ms", lambda ms: time.sleep(ms / 1000))(50)
         if self.ADDRESS not in i2c.scan():
             raise OSError("CST816S not found on I2C")
+        i2c.writeto_mem(self.ADDRESS, 0xFE, b"\x01")
+
+        i2c.writeto_mem(self.ADDRESS, 0xFA, b"\x41")
         self.was_down = False
         self.start = None
         self.last_point = None
-        self.reported = False
-        self.ignore_late_gesture = False
+        self.started_at = 0
+        self.start_gesture = 0
+        self.ignore_late_gesture = True
+        self.irq_sequence = 0
+        self.polled_irq_sequence = 0
+        self.irq_pin = irq_pin
+        self.last_event_at = None
+        self.now_ms = clock_ms or getattr(time, "ticks_ms", lambda: int(time.time() * 1000))
+        self.diff_ms = getattr(time, "ticks_diff", lambda end, start: end - start)
+        if irq_pin is not None:
+            irq_pin.irq(trigger=2, handler=self._on_touch_irq)
+
+    def _on_touch_irq(self, _pin):
+        self.irq_sequence = (self.irq_sequence + 1) & 0xffff
 
     def poll_event(self):
-        """Read documented gesture/finger/coordinate registers at 0x01..0x06.
-
-        Fallback swipe detection uses finger-down/move/up positions. A touch is
-        not treated as a tap at press time, so swiping cannot switch a world
-        accidentally before it is recognized. Physical tuning is pending.
-        """
+        """Emit one event after release, using movement before the gesture latch."""
+        sequence = self.irq_sequence
+        pending = sequence != self.polled_irq_sequence
+        self.polled_irq_sequence = sequence
         data = self.i2c.readfrom_mem(self.ADDRESS, 0x01, 6)
-        gesture = self.GESTURES.get(data[0])
+        code = data[0]
+        gesture = self.GESTURES.get(code)
         down = (data[1] & 0x0f) == 1
         x = ((data[2] & 15) << 8) | data[3]
         y = ((data[4] & 15) << 8) | data[5]
         valid = x < WIDTH and y < HEIGHT
+        now = self.now_ms()
         if down:
             if not self.was_down:
                 self.start = (x, y) if valid else None
-                self.reported = False
-                self.ignore_late_gesture = False
+                self.start_gesture = code
+                self.started_at = now
             if valid:
                 self.last_point = (x, y)
             self.was_down = True
-            if gesture and not self.reported:
-                self.reported = True
-                return gesture
             return None
         if self.was_down:
             self.was_down = False
             self.ignore_late_gesture = True
-            if self.reported:
-                self.reported = False
-                return None
-            if gesture:
-                return gesture
+            self.last_event_at = now
             if self.start is None or self.last_point is None:
                 return None
+            # Only use the release coordinate when the controller marks it UP.
+            # An all-zero idle report contains no endpoint.
+            if valid and (data[2] >> 6) == 1:
+                self.last_point = (x, y)
             dx = self.last_point[0] - self.start[0]
             dy = self.last_point[1] - self.start[1]
             if abs(dx) >= 36 and abs(dx) > abs(dy) * 1.3:
                 return "swipe_left" if dx < 0 else "swipe_right"
             if abs(dy) >= 36 and abs(dy) > abs(dx) * 1.3:
                 return "swipe_up" if dy < 0 else "swipe_down"
-            return "tap"
+            elapsed = self.diff_ms(now, self.started_at)
+            if max(abs(dx), abs(dy)) < 18:
+                if elapsed >= 650:
+                    return "long_press"
+                if gesture and code != self.start_gesture:
+                    return gesture
+                return "tap"
+            return None
+        # Fast gestures can finish between polls. An IRQ distinguishes a new
+        # contact from the unchanged direction code left in the IC's register.
+        if self.irq_pin is not None:
+            if not pending:
+                return None
+            if self.last_event_at is not None and self.diff_ms(now, self.last_event_at) < 250:
+                return None
+            self.last_event_at = now
+            return gesture
         if gesture and not self.ignore_late_gesture:
             self.ignore_late_gesture = True
             return gesture
@@ -303,14 +545,15 @@ class BatteryGauge:
 
 
 class RoundScreen:
-    def __init__(self, driver, i2c=None, touch_reset_pin=None, battery=None):
+    def __init__(self, driver, i2c=None, touch_reset_pin=None, battery=None,
+                 touch_irq_pin=None):
         self.driver = driver
         self.selected = "nature"
         self.water_area = "river"
         self.touch = None
         if i2c is not None:
             try:
-                self.touch = CST816Touch(i2c, touch_reset_pin)
+                self.touch = CST816Touch(i2c, touch_reset_pin, touch_irq_pin)
             except (OSError, ValueError):
                 pass
         self.battery = battery
@@ -325,6 +568,7 @@ class RoundScreen:
         self.shake_last_id = None
         self.shake_frames = 0
         self.lighting_phase = "day"
+        self.frame_cache = {} if _compose_pixels is not None else None
 
     def choose(self, ident):
         if ident not in WORLD_IDS:
@@ -365,29 +609,28 @@ class RoundScreen:
         return None
 
     def show(self, minutes, force=False, world=None):
-        """Draw once on mode/day changes or scheduled refresh; no frame buffer."""
+        """Draw the current world, using a native full-frame path when available."""
         if not self.visible:
             return False
-        ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
-            if self.selected == "aquarium" else self.selected
-        early_path = "assets/%s-young.dat" % ident
-        mature_path = "assets/%s-mature.dat" % ident
-        if not (valid_frame(early_path) and valid_frame(mature_path)):
+        early_path, mature_path, alpha = self._art_frames(minutes, world)
+        frame = self._get_frame(early_path, mature_path, alpha)
+        if frame is None and not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
-                 if self.selected == "city" else town_art_alpha(minutes))
-        with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
-            self.driver.window(0, 0, WIDTH, HEIGHT)
-            self.driver.start_pixels()
-            try:
-                for _ in range(HEIGHT):
-                    a, b = early.read(WIDTH * 2), mature.read(WIDTH * 2)
-                    if len(a) != WIDTH * 2 or len(b) != WIDTH * 2:
-                        raise OSError("Truncated display asset")
-                    self.driver.write_pixels(ambience_row(blend_row(a, b, alpha),
-                                                         self.lighting_phase))
-            finally:
-                self.driver.stop_pixels()
+        self.driver.window(0, 0, WIDTH, HEIGHT)
+        self.driver.start_pixels()
+        try:
+            if frame is not None:
+                self.driver.write_pixels(frame)
+            else:
+                with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
+                    for _ in range(HEIGHT):
+                        a, b = early.read(WIDTH * 2), mature.read(WIDTH * 2)
+                        if len(a) != WIDTH * 2 or len(b) != WIDTH * 2:
+                            raise OSError("Truncated display asset")
+                        self.driver.write_pixels(ambience_row(blend_row(a, b, alpha),
+                                                             self.lighting_phase))
+        finally:
+            self.driver.stop_pixels()
         self.particles = []
         self.people = []
         self.info_frames = 0
@@ -407,6 +650,62 @@ class RoundScreen:
                 self.driver.solid(100, 19, 31, 10, 0x05E0)
                 self.driver.solid(132, 22, 4, 4, 0x05E0)
         return True
+
+    def invalidate_frames(self):
+        if self.frame_cache is not None:
+            self.frame_cache.clear()
+
+    def _get_frame(self, early_path, mature_path, alpha):
+        if self.frame_cache is None:
+            return None
+        scene = self.water_area if self.selected == "aquarium" else self.selected
+        signature = (early_path, mature_path, alpha, self.lighting_phase)
+        cached = self.frame_cache.get(scene)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        if not (valid_frame(early_path) and valid_frame(mature_path)):
+            return None
+        try:
+            with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
+                a = early.read(FRAME_SIZE)
+                b = mature.read(FRAME_SIZE)
+            if len(a) != FRAME_SIZE or len(b) != FRAME_SIZE:
+                raise OSError("Truncated display asset")
+            frame = cached[1] if cached is not None else bytearray(FRAME_SIZE)
+            phase = ("day", "dawn", "dusk", "night", "lights_out").index(self.lighting_phase)
+            _compose_pixels(frame, a, b, (alpha, phase))
+            self.frame_cache[scene] = (signature, frame)
+            return frame
+        except MemoryError:
+            self.frame_cache = None
+            return None
+
+    def warm_next_frame(self, engine):
+        """Prepare one visible world's background between input/network polls."""
+        if self.frame_cache is None or not self.visible:
+            return False
+        selected, water_area = self.selected, self.water_area
+        try:
+            for ident in WORLD_IDS:
+                world = engine.worlds[ident]
+                areas = WATER_AREAS if ident == "aquarium" else (None,)
+                for area in areas:
+                    if area is not None and not world["water_areas"][area]["unlocked"]:
+                        continue
+                    self.selected = ident
+                    self.water_area = area or water_area
+                    early, mature, alpha = self._art_frames(world["minutes"], world)
+                    scene = area or ident
+                    signature = (early, mature, alpha, self.lighting_phase)
+                    cached = self.frame_cache.get(scene)
+                    if cached is None or cached[0] != signature:
+                        if self._get_frame(early, mature, alpha) is not None:
+                            return True
+                        if self.frame_cache is None:
+                            return False
+            return False
+        finally:
+            self.selected, self.water_area = selected, water_area
 
     def _town_lamps(self, world):
         """Light the starter cottage and more streetlamps as the town grows."""
@@ -469,11 +768,14 @@ class RoundScreen:
         if self.visible:
             self.driver.set_brightness(percent)
 
-    def _current_art_paths(self):
+    def _art_frames(self, minutes, world=None):
+        if self.selected == "hybrid":
+            return hybrid_art_frames(minutes)
         ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
             if self.selected == "aquarium" else self.selected
         return ("assets/%s-young.dat" % ident,
-                "assets/%s-mature.dat" % ident)
+                "assets/%s-mature.dat" % ident,
+                town_art_alpha(minutes, world.get("houses") if world and self.selected == "city" else None))
 
     def _restore_patch(self, young, mature, rect, alpha):
         x, y, size, _ = rect
@@ -519,11 +821,9 @@ class RoundScreen:
             if not self.info_frames:
                 self.show(minutes, force=True)
             return True
-        early_path, mature_path = self._current_art_paths()
+        early_path, mature_path, alpha = self._art_frames(minutes, world)
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        alpha = (town_art_alpha(minutes, world.get("houses") if world else None)
-                 if self.selected == "city" else town_art_alpha(minutes))
         with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
             for rect in self.particles:
                 self._restore_patch(early, mature, rect, alpha)
@@ -544,7 +844,14 @@ class RoundScreen:
         if self.selected == "city":
             # Actual town population is the source of truth; a visual cap keeps
             # the display legible as the population grows toward 40 residents.
-            self.particles = []
+            self.particles = water_ambient_particles(
+                "city", self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0)
+            for x, y, size, value in self.particles:
+                self.driver.solid(x, y, size, size, value)
+            if self.shake_frames:
+                self.shake_frames -= 1
             count = world.get("residents", 2) if world else 2
             self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
             shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
@@ -556,24 +863,43 @@ class RoundScreen:
                 self._town_lamps(world)
             return True
         self.people = []
-        watery = self.selected == "aquarium"
-        colour = (0xC7DF if watery else 0xFFDF if self.selected == "fantasy"
-                  else 0xF6A4 if self.selected == "forest" else 0xE7B1)
-        if self.shake_frames:
-            colour = 0xFFFF
-            self.shake_frames -= 1
-        # Keep all 4×4 sprites away from circular screen corners.
-        self.particles = [
-            (72 + (i * 31) % 95 + tilt_x,
-             65 + ((i * 43 - self.animation_tick * (4 if watery else 1)) % 125) + tilt_y,
-             4, colour)
-            for i in range(4)
-        ]
+        if self.selected == "hybrid":
+            self.particles = hybrid_ambient_particles(
+                self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0)
+            if self.shake_frames:
+                self.shake_frames -= 1
+        elif self.selected == "nature":
+            self.particles = nature_ambient_particles(
+                self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0, alpha / 255)
+            if self.shake_frames:
+                self.shake_frames -= 1
+        else:
+            art_id = ("aquarium" if self.water_area == "ocean" else self.water_area) \
+                if self.selected == "aquarium" else self.selected
+            self.particles = water_ambient_particles(
+                art_id, self.animation_tick, self.lighting_phase,
+                world.get("weather", "sunny") if world else "sunny",
+                tilt_x, tilt_y, self.shake_frames > 0, alpha / 255)
+            if self.selected == "fantasy" and self.lighting_phase != "lights_out":
+                # Keep two small drifting magic lights above the island.
+                self.particles.extend([
+                    (53 + (self.animation_tick + i * 5) % 14 + tilt_x,
+                     88 + i * 15 + tilt_y, 2,
+                     0xFFFF if self.shake_frames else 0xFFDF)
+                    for i in range(2)
+                ])
+            if self.shake_frames:
+                self.shake_frames -= 1
         for x, y, size, value in self.particles:
             self.driver.solid(x, y, size, size, value)
         if self.selected in ("hybrid", "fantasy"):
             count = world.get("residents", 0) if world else 0
-            self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
+            self.people = hybrid_people(count, self.animation_tick, tilt_x, tilt_y) \
+                if self.selected == "hybrid" else town_people(count, self.animation_tick, tilt_x, tilt_y)
             shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
             for i, (x, y) in enumerate(self.people):
                 self.driver.solid(x, y, 1, 1, 0xFFBE)
