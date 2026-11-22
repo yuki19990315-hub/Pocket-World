@@ -86,6 +86,7 @@
       <section class="panel"><h3>☀️ サンニーの1日 <span>DAY / NIGHT</span></h3><p class="sound-description" id="day-cycle">起床から就寝までに、朝・昼・夕暮れ・夜が巡ります。</p><div class="timebox"><span>いまの空</span><b id="day-phase">☀ 昼</b></div><div class="phase-tabs" aria-label="1日の風景をプレビュー"><button class="phase-btn active" data-phase="auto">自動</button><button class="phase-btn" data-phase="dawn">朝</button><button class="phase-btn" data-phase="day">昼</button><button class="phase-btn" data-phase="dusk">夕方</button><button class="phase-btn" data-phase="night">夜</button><button class="phase-btn" data-phase="lights_out">消灯</button></div></section>
       <section class="panel"><h3>🎤 音で変わる世界 <span>SOUND REACTIONS</span></h3><p class="sound-description" id="sound-description">周囲の音で小さな世界が変化します。</p><div class="timebox"><span>マイクの状態</span><b id="sound-status">外付けマイク待ち</b></div><div class="timebox"><span>音のようす</span><b id="sound-level">未計測</b></div></section>
       <section class="panel"><h3>🌀 手の中の重力 <span>GYRO / MOTION</span></h3><p class="sound-description">サンニーを傾けると、世界が少しだけ重力に反応します。振るイベントは初期設定ではOFFです。</p><div class="timebox"><span>6軸センサー</span><b id="motion-status">実機接続待ち</b></div><div class="timebox"><span>傾き</span><b id="motion-tilt">未計測</b></div></section>
+      <section class="panel"><h3>来訪図鑑 <span id="discovery-count"></span></h3><p class="sound-description" id="visitor-now">数分ごとに小さな来訪が起こり、出会いが自動で記録されます。</p><ul class="events" id="discoveries"></ul></section>
       <section class="panel"><h3>世界の発見ノート <span>24 LATEST EVENTS</span></h3><ul class="events" id="events"><li>この世界が誕生しました</li></ul></section>
     </div>
   </div>
@@ -524,6 +525,29 @@
     }
     drawDayLighting(world);drawShakeSparkles(t);ctx.restore();
   }
+  let stateReceivedAt = Date.now();
+  function drawVisitor(world,t){
+    const visit=world.visitor;
+    if(!live||!visit||!Array.isArray(visit.frames)||visit.frames.length!==2)return;
+    if(selected==="aquarium"&&visit.area!==waterArea)return;
+    const age=visit.age+(Date.now()-stateReceivedAt)/1000;
+    if(age<0||age>=visit.duration||activePhase()==="lights_out")return;
+    const tick=Math.floor(t/250),x=43+Math.floor(age*125/visit.duration);
+    let y=73+tick%2;
+    if(waterAreas.includes(visit.area))y=112+tick%2;
+    else if(["person","deer","rabbit","fox"].includes(visit.shape))y=151-(visit.shape==="rabbit"?tick%2:0);
+    else if(visit.shape==="meteor")y=62+Math.floor(age/2);
+    ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
+    if(motionState.connected)ctx.translate(motionState.tilt_x*7,motionState.tilt_y*7);
+    if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
+    ctx.scale(1.5,1.5);
+    for(const [dx,dy,width,height,color] of visit.frames[tick%2]){
+      ctx.fillStyle="rgb("+Math.round(((color>>11)&31)*255/31)+","+
+        Math.round(((color>>5)&63)*255/63)+","+Math.round((color&31)*255/31)+")";
+      ctx.fillRect(x+dx,y+dy,width,height);
+    }
+    ctx.restore();
+  }
   function drawShakeSparkles(t){
     if(Date.now()>shakeUntil)return;
     const color=selected==="aquarium"?"#d6f6ff":selected==="forest"?"#ffeb9c":"#f5e6ad";
@@ -582,6 +606,19 @@
     $("sound-level").textContent=audioState.connected?({quiet:"静か",active:"活動中",loud:"にぎやか"}[audioState.band]||"計測中")+" ・ "+audioState.level+"/100":"未計測";
     $("motion-status").textContent=motionState.connected?"傾きに反応中":"実機接続待ち";
     $("motion-tilt").textContent=motionState.connected?"横 "+Math.round(motionState.tilt_x*100)+"% / 縦 "+Math.round(motionState.tilt_y*100)+"%":"未計測";
+    const catalog=Array.isArray(w.visitor_catalog)?w.visitor_catalog:[];
+    const discovered=catalog.filter(item=>item.visits>0).length;
+    $("discovery-count").textContent=catalog.length?discovered+" / "+catalog.length:"";
+    const currentVisit=w.visitor&&(selected!=="aquarium"||w.visitor.area===waterArea)?w.visitor:null;
+    $("visitor-now").textContent=currentVisit
+      ?(currentVisit.rare?"珍しい来訪：":"いまの来訪：")+currentVisit.name
+      :"数分ごとに小さな来訪が起こり、出会いが自動で記録されます。";
+    $("discoveries").replaceChildren(...(catalog.length?catalog:[{name:"サンニーに接続すると来訪の記録を見られます",visits:1}]).map(item=>{
+      const li=document.createElement("li");
+      li.textContent=item.visits>0?(item.rare?"✧ ":"")+item.name+
+        (item.id?" ・ "+item.visits+"回":""):"？？？";
+      return li;
+    }));
     const journal=Array.isArray(w.journal)?w.journal:[];
     const list=journal.length?journal.slice(-24).reverse().map(e=>
       "DAY "+(Math.floor((e.minute||0)/1440)+1)+" ・ "+e.message):
@@ -599,6 +636,7 @@
       if(!response.ok)throw Error("No ESP32 API");const data=await response.json();
       if(!Array.isArray(data.worlds)||data.worlds.length!==6)throw Error("Bad state");
       current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
+      stateReceivedAt=Date.now();
       powerState=data.power||powerState;
       displayState=data.display||{connected:false,selected:null,battery:null};
       audioState=data.audio&&typeof data.audio.connected==="boolean"?data.audio:{connected:false,level:null,band:null};
@@ -642,7 +680,7 @@
   let downX=null;
   canvas.addEventListener('touchstart',e=>{downX=e.touches[0].clientX},{passive:true});
   canvas.addEventListener('touchend',e=>{if(downX===null)return;const dx=e.changedTouches[0].clientX-downX;if(Math.abs(dx)>45)setWorld(worlds[(worlds.indexOf(selected)+(dx<0?1:worlds.length-1))%worlds.length]);downX=null},{passive:true});
-  function frame(t){drawScene(getWorld(),t);requestAnimationFrame(frame);}
+  function frame(t){const world=getWorld();drawScene(world,t);drawVisitor(world,t);requestAnimationFrame(frame);}
   const preview = new URLSearchParams(location.search);
   if(waterAreas.includes(preview.get("area")))waterArea=preview.get("area");
   setWorld(worlds.includes(preview.get("world"))?preview.get("world"):selected);

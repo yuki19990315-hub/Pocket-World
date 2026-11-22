@@ -10,6 +10,7 @@ See THIRD_PARTY_NOTICES.md for attribution.
 """
 
 import time
+from scene_events import active_visit, visitor_frames, visitor_position
 
 try:
     import micropython
@@ -18,7 +19,30 @@ except ImportError:
 
 
 _compose_pixels = None
+_copy_region = None
+_fill_region = None
 if micropython is not None:
+    @micropython.viper
+    def _copy_region(destination, frame, left: int, top: int, width: int, height: int):
+        output = ptr8(destination)
+        source = ptr8(frame)
+        stride = width * 2
+        for row in range(height):
+            origin = ((top + row) * 240 + left) * 2
+            offset = row * stride
+            for column in range(stride):
+                output[offset + column] = source[origin + column]
+
+    @micropython.viper
+    def _fill_region(destination, stride: int, x: int, y: int,
+                     width: int, height: int, color: int):
+        output = ptr8(destination)
+        for row in range(height):
+            offset = ((y + row) * stride + x) * 2
+            for column in range(width):
+                output[offset + column * 2] = color >> 8
+                output[offset + column * 2 + 1] = color & 255
+
     @micropython.viper
     def _compose_pixels(destination, early, late, settings):
         """Blend and light RGB565 pixels using native integer arithmetic."""
@@ -569,6 +593,10 @@ class RoundScreen:
         self.shake_frames = 0
         self.lighting_phase = "day"
         self.frame_cache = {} if _compose_pixels is not None else None
+        self.visitor_rect = None
+        self.visitor_kind = None
+        self.visitor_frames = None
+        self.animation_buffer = bytearray()
 
     def choose(self, ident):
         if ident not in WORLD_IDS:
@@ -633,6 +661,7 @@ class RoundScreen:
             self.driver.stop_pixels()
         self.particles = []
         self.people = []
+        self.visitor_rect = None
         self.info_frames = 0
         self.last_draw_at = int(minutes)
         if self.selected == "city" and self.lighting_phase == "night":
@@ -707,25 +736,26 @@ class RoundScreen:
         finally:
             self.selected, self.water_area = selected, water_area
 
-    def _town_lamps(self, world):
-        """Light the starter cottage and more streetlamps as the town grows."""
+    def _lamp_rectangles(self, world):
         homes = world.get("houses", 1) if world else 1
-        # The only home at birth gets two warmly lit windows.
+        rectangles = []
         for x, y in ((49, 119), (77, 119)):
-            self.driver.solid(x, y, 2, 2, 0xFD20)
-            self.driver.solid(x, y, 1, 1, 0xFFDE)
-        # More windows gradually light up with each saved house milestone.
+            rectangles.extend(((x, y, 2, 2, 0xFD20), (x, y, 1, 1, 0xFFDE)))
         windows = ((35, 91), (77, 96), (111, 110), (162, 111),
                    (211, 101), (218, 124), (153, 89), (130, 132),
                    (60, 112), (190, 138), (102, 150), (145, 150))
         for x, y in windows[:max(0, min(12, homes - 1))]:
-            self.driver.solid(x, y, 2, 2, 0xFDE0)
-            self.driver.solid(x, y, 1, 1, 0xFFFF)
+            rectangles.extend(((x, y, 2, 2, 0xFDE0), (x, y, 1, 1, 0xFFFF)))
         for x, y in ((119, 158), (141, 171), (93, 192),
                      (156, 192), (124, 215), (79, 174))[:max(0, min(6, homes - 1))]:
-            self.driver.solid(x, y, 1, 7, 0x3186)   # slender lamppost
-            self.driver.solid(x - 1, y - 2, 3, 2, 0xFCA0)
-            self.driver.solid(x, y - 2, 1, 1, 0xFFE0)
+            rectangles.extend(((x, y, 1, 7, 0x3186),
+                               (x - 1, y - 2, 3, 2, 0xFCA0),
+                               (x, y - 2, 1, 1, 0xFFE0)))
+        return rectangles
+
+    def _town_lamps(self, world):
+        for rectangle in self._lamp_rectangles(world):
+            self.driver.solid(*rectangle)
 
     def set_lighting(self, phase, minutes, world=None):
         if phase not in ("dawn", "day", "dusk", "night", "lights_out"):
@@ -777,18 +807,103 @@ class RoundScreen:
                 "assets/%s-mature.dat" % ident,
                 town_art_alpha(minutes, world.get("houses") if world and self.selected == "city" else None))
 
-    def _restore_patch(self, young, mature, rect, alpha):
+    def _restore_patch(self, young, mature, rect, alpha, height=None):
         x, y, size, _ = rect
-        self.driver.window(x, y, size, size)
+        height = size if height is None else height
+        self.driver.window(x, y, size, height)
         self.driver.start_pixels()
         try:
-            for line in range(size):
+            for line in range(height):
                 offset = ((y + line) * WIDTH + x) * 2
                 young.seek(offset)
                 mature.seek(offset)
                 self.driver.write_pixels(ambience_row(blend_row(young.read(size * 2),
                                                                 mature.read(size * 2), alpha),
                                                      self.lighting_phase))
+        finally:
+            self.driver.stop_pixels()
+
+    def _restore_cached(self, frame, x, y, width, height):
+        left, top = max(0, x), max(0, y)
+        right, bottom = min(WIDTH, x + width), min(HEIGHT, y + height)
+        if left >= right or top >= bottom:
+            return
+        self.driver.window(left, top, right - left, bottom - top)
+        self.driver.start_pixels()
+        view = memoryview(frame)
+        try:
+            for row in range(top, bottom):
+                offset = (row * WIDTH + left) * 2
+                self.driver.write_pixels(view[offset:offset + (right - left) * 2])
+        finally:
+            self.driver.stop_pixels()
+
+    def _visitor_rectangles(self, world):
+        if world is None:
+            return []
+        visit = active_visit(world, self.water_area if self.selected == "aquarium" else None)
+        if visit is None or self.lighting_phase == "lights_out":
+            self.visitor_rect = None
+            return []
+        if self.visitor_kind != visit["id"]:
+            self.visitor_kind = visit["id"]
+            self.visitor_frames = visitor_frames(visit["id"])
+        pixels = self.visitor_frames[self.animation_tick % 2]
+        x, y = visitor_position(visit, self.animation_tick)
+        left = min(item[0] for item in pixels)
+        top = min(item[1] for item in pixels)
+        right = max(item[0] + item[2] for item in pixels)
+        bottom = max(item[1] + item[3] for item in pixels)
+        self.visitor_rect = (x + left, y + top, right - left, bottom - top)
+        return [(x + dx, y + dy, width, height, color)
+                for dx, dy, width, height, color in pixels]
+
+    def _paint_animation(self, frame, old_regions, rectangles):
+        regions = old_regions + [item[:4] for item in rectangles]
+        if not regions:
+            return
+        left = max(0, min(item[0] for item in regions))
+        top = max(0, min(item[1] for item in regions))
+        right = min(WIDTH, max(item[0] + item[2] for item in regions))
+        bottom = min(HEIGHT, max(item[1] + item[3] for item in regions))
+        width, height = right - left, bottom - top
+        if width <= 0 or height <= 0:
+            return
+        length = width * height * 2
+        try:
+            if len(self.animation_buffer) < length:
+                self.animation_buffer = bytearray(length)
+            buffer = memoryview(self.animation_buffer)[:length]
+        except MemoryError:
+            for x, y, w, h in old_regions:
+                self._restore_cached(frame, x, y, w, h)
+            for rectangle in rectangles:
+                self.driver.solid(*rectangle)
+            return
+        if _copy_region is not None:
+            _copy_region(buffer, frame, left, top, width, height)
+        else:
+            background = memoryview(frame)
+            for row in range(height):
+                source = ((top + row) * WIDTH + left) * 2
+                offset = row * width * 2
+                buffer[offset:offset + width * 2] = background[source:source + width * 2]
+        for x, y, w, h, color in rectangles:
+            x0, y0 = max(left, x), max(top, y)
+            x1, y1 = min(right, x + w), min(bottom, y + h)
+            if x0 >= x1 or y0 >= y1:
+                continue
+            if _fill_region is not None:
+                _fill_region(buffer, width, x0 - left, y0 - top, x1 - x0, y1 - y0, color)
+            else:
+                stripe = bytes((color >> 8, color & 255)) * (x1 - x0)
+                for row in range(y0, y1):
+                    offset = ((row - top) * width + x0 - left) * 2
+                    buffer[offset:offset + len(stripe)] = stripe
+        self.driver.window(left, top, width, height)
+        self.driver.start_pixels()
+        try:
+            self.driver.write_pixels(buffer)
         finally:
             self.driver.stop_pixels()
 
@@ -809,26 +924,27 @@ class RoundScreen:
             self.driver.stop_pixels()
 
     def animate(self, minutes, motion=None, world=None):
-        """Animate town pedestrians or ambient particles with small patch restores.
-
-        Motion is intentionally decorative: no changes to simulation state.
-        A few hundred SPI bytes per tick are much cheaper than a fresh frame.
-        """
+        """Restore and compose moving objects in one dirty rectangle."""
         if not self.visible:
             return False
         if self.info_frames:
             self.info_frames -= 1
             if not self.info_frames:
-                self.show(minutes, force=True)
+                self.show(minutes, force=True, world=world)
             return True
         early_path, mature_path, alpha = self._art_frames(minutes, world)
-        if not (valid_frame(early_path) and valid_frame(mature_path)):
-            return False
-        with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
-            for rect in self.particles:
-                self._restore_patch(early, mature, rect, alpha)
-            for point in self.people:
-                self._restore_person(early, mature, point, alpha)
+        frame = self._get_frame(early_path, mature_path, alpha)
+        old_regions = [(x, y, size, size) for x, y, size, _ in self.particles]
+        old_regions.extend((x, y, 1, 3) for x, y in self.people)
+        if self.visitor_rect is not None:
+            old_regions.append(self.visitor_rect)
+        if frame is None:
+            if not (valid_frame(early_path) and valid_frame(mature_path)):
+                return False
+            with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
+                for x, y, width, height in old_regions:
+                    self._restore_patch(early, mature, (x, y, width, 0), alpha, height)
+        self.visitor_rect = None
         self.animation_tick += 1
         tilt_x, tilt_y = 0, 0
         if motion is not None:
@@ -838,73 +954,50 @@ class RoundScreen:
                 tilt_y = int(max(-1, min(1, effect.get("tilt_y", 0))) * 8)
                 shake_id = effect.get("shake_id", 0)
                 if (effect.get("shake_enabled") and self.shake_last_id is not None
-                    and shake_id > self.shake_last_id):
+                        and shake_id > self.shake_last_id):
                     self.shake_frames = 4
                 self.shake_last_id = shake_id
-        if self.selected == "city":
-            # Actual town population is the source of truth; a visual cap keeps
-            # the display legible as the population grows toward 40 residents.
-            self.particles = water_ambient_particles(
-                "city", self.animation_tick, self.lighting_phase,
-                world.get("weather", "sunny") if world else "sunny",
-                tilt_x, tilt_y, self.shake_frames > 0)
-            for x, y, size, value in self.particles:
-                self.driver.solid(x, y, size, size, value)
-            if self.shake_frames:
-                self.shake_frames -= 1
-            count = world.get("residents", 2) if world else 2
-            self.people = town_people(count, self.animation_tick, tilt_x, tilt_y)
-            shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
-            for i, (x, y) in enumerate(self.people):
-                self.driver.solid(x, y, 1, 1, 0xFFBE)  # head
-                self.driver.solid(x, y + 1, 1, 1, shirts[i % len(shirts)])
-                self.driver.solid(x, y + 2, 1, 1, 0x2104)  # feet
-            if self.lighting_phase == "night":
-                self._town_lamps(world)
-            return True
-        self.people = []
+        weather = world.get("weather", "sunny") if world else "sunny"
         if self.selected == "hybrid":
             self.particles = hybrid_ambient_particles(
-                self.animation_tick, self.lighting_phase,
-                world.get("weather", "sunny") if world else "sunny",
+                self.animation_tick, self.lighting_phase, weather,
                 tilt_x, tilt_y, self.shake_frames > 0)
-            if self.shake_frames:
-                self.shake_frames -= 1
         elif self.selected == "nature":
             self.particles = nature_ambient_particles(
-                self.animation_tick, self.lighting_phase,
-                world.get("weather", "sunny") if world else "sunny",
+                self.animation_tick, self.lighting_phase, weather,
                 tilt_x, tilt_y, self.shake_frames > 0, alpha / 255)
-            if self.shake_frames:
-                self.shake_frames -= 1
         else:
             art_id = ("aquarium" if self.water_area == "ocean" else self.water_area) \
                 if self.selected == "aquarium" else self.selected
             self.particles = water_ambient_particles(
-                art_id, self.animation_tick, self.lighting_phase,
-                world.get("weather", "sunny") if world else "sunny",
+                art_id, self.animation_tick, self.lighting_phase, weather,
                 tilt_x, tilt_y, self.shake_frames > 0, alpha / 255)
             if self.selected == "fantasy" and self.lighting_phase != "lights_out":
-                # Keep two small drifting magic lights above the island.
-                self.particles.extend([
+                self.particles.extend(
                     (53 + (self.animation_tick + i * 5) % 14 + tilt_x,
-                     88 + i * 15 + tilt_y, 2,
-                     0xFFFF if self.shake_frames else 0xFFDF)
-                    for i in range(2)
-                ])
-            if self.shake_frames:
-                self.shake_frames -= 1
-        for x, y, size, value in self.particles:
-            self.driver.solid(x, y, size, size, value)
-        if self.selected in ("hybrid", "fantasy"):
-            count = world.get("residents", 0) if world else 0
-            self.people = hybrid_people(count, self.animation_tick, tilt_x, tilt_y) \
-                if self.selected == "hybrid" else town_people(count, self.animation_tick, tilt_x, tilt_y)
-            shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
-            for i, (x, y) in enumerate(self.people):
-                self.driver.solid(x, y, 1, 1, 0xFFBE)
-                self.driver.solid(x, y + 1, 1, 1, shirts[i % len(shirts)])
-                self.driver.solid(x, y + 2, 1, 1, 0x2104)
+                     88 + i * 15 + tilt_y, 2, 0xFFFF if self.shake_frames else 0xFFDF)
+                    for i in range(2))
+        if self.shake_frames:
+            self.shake_frames -= 1
+        self.people = []
+        if self.selected in ("city", "hybrid", "fantasy"):
+            count = world.get("residents", 2 if self.selected == "city" else 0) if world else 0
+            people = hybrid_people if self.selected == "hybrid" else town_people
+            self.people = people(count, self.animation_tick, tilt_x, tilt_y)
+        rectangles = [(x, y, size, size, color) for x, y, size, color in self.particles]
+        shirts = (0x19A7, 0xC1E6, 0x3A2E, 0x89A4)
+        for i, (x, y) in enumerate(self.people):
+            rectangles.extend(((x, y, 1, 1, 0xFFBE),
+                               (x, y + 1, 1, 1, shirts[i % len(shirts)]),
+                               (x, y + 2, 1, 1, 0x2104)))
+        if self.selected == "city" and self.lighting_phase == "night":
+            rectangles.extend(self._lamp_rectangles(world))
+        rectangles.extend(self._visitor_rectangles(world))
+        if frame is not None:
+            self._paint_animation(frame, old_regions, rectangles)
+        else:
+            for rectangle in rectangles:
+                self.driver.solid(*rectangle)
         return True
 
     def show_info(self, minutes, world=None):
