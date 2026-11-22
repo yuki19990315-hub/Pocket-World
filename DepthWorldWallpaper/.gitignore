@@ -4,3 +4,8 @@
 *.iml
 local.properties
 *.apk
+*.jks
+*.keystore
+*.p12
+*signing*password*.txt
+*signing*base64*.txt

@@ -46,8 +46,31 @@ jobs:
           fi
       - name: Check source structure
         run: python3 "${{ steps.project.outputs.path }}/tests/verify_project.py"
+      - name: Restore permanent signing key
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.DEPTHWORLD_SIGNING_KEYSTORE_B64 }}
+          SIGNING_PASSWORD: ${{ secrets.DEPTHWORLD_SIGNING_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$SIGNING_PASSWORD" ]; then
+            echo 'Missing permanent signing secrets. See DepthWorldWallpaper/README.md.' >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/depthworld-signing.p12"
+          echo "DEPTHWORLD_KEYSTORE_FILE=$RUNNER_TEMP/depthworld-signing.p12" >> "$GITHUB_ENV"
+          actual="$(keytool -exportcert -alias depthworld -keystore "$RUNNER_TEMP/depthworld-signing.p12" -storepass:env SIGNING_PASSWORD | sha256sum)"
+          actual="${actual%% *}"
+          if [ "$actual" != '958c868f3dcc878aa00c8c88c65e16baa1816e8a3f6e81c06a37b31fb8d988fc' ]; then
+            echo 'Unexpected signing certificate; refusing to publish an incompatible APK.' >&2
+            exit 1
+          fi
       - name: Build APK
+        env:
+          DEPTHWORLD_SIGNING_PASSWORD: ${{ secrets.DEPTHWORLD_SIGNING_PASSWORD }}
         run: bash "${{ steps.project.outputs.path }}/gradlew" -p "${{ steps.project.outputs.path }}" --no-daemon --stacktrace :app:assembleDebug
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs "${{ steps.project.outputs.path }}/app/build/outputs/apk/debug/app-debug.apk" | grep -Fiq '958c868f3dcc878aa00c8c88c65e16baa1816e8a3f6e81c06a37b31fb8d988fc'
       - uses: actions/upload-artifact@v4
         with:
           name: DepthWorldWallpaper-debug-apk

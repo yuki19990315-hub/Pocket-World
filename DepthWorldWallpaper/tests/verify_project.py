@@ -48,7 +48,12 @@ assert service.attrib[android_ns + "exported"] == "true"
 assert not manifest.findall("uses-permission"), "unexpected Android permission requested"
 dependencies = (ROOT / "app/build.gradle").read_text()
 assert "play-services-mlkit-subject-segmentation:16.0.0-beta1" in dependencies
-assert "versionName '0.5.1'" in dependencies
+assert "versionName '0.5.2'" in dependencies
+assert "signingConfigs" in dependencies and "DEPTHWORLD_KEYSTORE_FILE" in dependencies
+assert "DEPTHWORLD_SIGNING_PASSWORD" in dependencies
+workflow = (ROOT / ".github/workflows/build-depthworld-apk.yml").read_text()
+assert "DEPTHWORLD_SIGNING_KEYSTORE_B64" in workflow
+assert "Verify APK signature" in workflow and "958c868f3dcc878aa00c8c88c65e16baa1816e8a3f6e81c06a37b31fb8d988fc" in workflow
 
 wrapper_jar = ROOT / "gradle/wrapper/gradle-wrapper.jar"
 wrapper_sha = hashlib.sha256(wrapper_jar.read_bytes()).hexdigest()
@@ -100,6 +105,9 @@ assert "WallpaperConfig.VIDEO_OFFSET_Y" in activity_code
 assert "VideoStore.removeVideoIfInactive" in activity_code
 assert "power.isPowerSaveMode" in engine_code
 assert "WallpaperConfig.TILT_ENABLED" in engine_code
+assert "WallpaperConfig.INVERT_TILT_X" in engine_code
+assert "if (WallpaperConfig.invertTiltX(prefs)) -dx else dx" in engine_code
+assert "左右の傾きを反転する" in activity_code
 assert "WallpaperConfig.CYBER -> cyberRenderer.draw" in engine_code
 assert "WallpaperConfig.CYBER -> cyberSection" in activity_code
 cyber_code = (code_dir / "CyberCircuitRenderer.kt").read_text()

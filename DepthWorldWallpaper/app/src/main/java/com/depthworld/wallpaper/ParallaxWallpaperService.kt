@@ -172,6 +172,7 @@ class ParallaxWallpaperService : WallpaperService() {
                     tiltY = 0f
                     updateSensorListening()
                 }
+                WallpaperConfig.INVERT_TILT_X -> tiltX = 0f
             }
         }
 
@@ -198,7 +199,8 @@ class ParallaxWallpaperService : WallpaperService() {
             }
             val dx = normalizedDelta(x, baseX)
             val dy = normalizedDelta(y, baseY)
-            tiltX = tiltX * 0.90f + dx * 0.10f
+            val horizontal = if (WallpaperConfig.invertTiltX(prefs)) -dx else dx
+            tiltX = tiltX * 0.90f + horizontal * 0.10f
             tiltY = tiltY * 0.90f + dy * 0.10f
         }
 

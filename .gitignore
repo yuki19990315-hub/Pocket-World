@@ -12,6 +12,11 @@ local.properties
 # Build artifacts
 *.apk
 *.aab
+*.jks
+*.keystore
+*.p12
+*signing*password*.txt
+*signing*base64*.txt
 
 # Private device configuration: do not commit real passwords/keys
 firmware/settings.local.py

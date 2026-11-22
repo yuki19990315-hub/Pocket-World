@@ -181,6 +181,16 @@ class MainActivity : Activity() {
             }
         }
         settings.addView(tilt)
+        val reverseHorizontal = Switch(this).apply {
+            text = "左右の傾きを反転する（標準でON）"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            isChecked = WallpaperConfig.invertTiltX(prefs)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(WallpaperConfig.INVERT_TILT_X, checked).apply()
+            }
+        }
+        settings.addView(reverseHorizontal)
         settings.addView(button("傾きの中心をリセット") {
             prefs.edit().putInt(WallpaperConfig.RECENTER, prefs.getInt(WallpaperConfig.RECENTER, 0) + 1).apply()
             Toast.makeText(this, "次のセンサー入力を中心位置にします", Toast.LENGTH_SHORT).show()

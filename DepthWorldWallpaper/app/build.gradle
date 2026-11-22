@@ -11,8 +11,28 @@ android {
         applicationId 'com.depthworld.wallpaper'
         minSdk 26
         targetSdk 35
-        versionCode 7
-        versionName '0.5.1'
+        versionCode 8
+        versionName '0.5.2'
+    }
+
+    // GitHub Actions injects a permanent signing key from repository secrets.
+    // Without these variables, local developer builds use Android's debug key.
+    signingConfigs {
+        if (System.getenv('DEPTHWORLD_KEYSTORE_FILE') && System.getenv('DEPTHWORLD_SIGNING_PASSWORD')) {
+            depthworld {
+                storeFile file(System.getenv('DEPTHWORLD_KEYSTORE_FILE'))
+                storePassword System.getenv('DEPTHWORLD_SIGNING_PASSWORD')
+                keyAlias 'depthworld'
+                keyPassword System.getenv('DEPTHWORLD_SIGNING_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug {
+            if (System.getenv('DEPTHWORLD_KEYSTORE_FILE') && System.getenv('DEPTHWORLD_SIGNING_PASSWORD')) {
+                signingConfig signingConfigs.depthworld
+            }
+        }
     }
 
     compileOptions {
