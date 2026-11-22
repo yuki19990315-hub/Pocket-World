@@ -4,6 +4,9 @@ All six worlds advance independently, even when a different world is viewed.
 No network, display, or filesystem dependency is required by this module.
 """
 
+from scene_events import (VISITORS, VISITOR_INFO, active_visit,
+                          visitor_choices, visitor_frames)
+
 WORLD_DEFS = (
     ("nature", "自然の世界", "Island", 13579),
     ("city", "街の世界", "Town", 24681),
@@ -60,7 +63,7 @@ def _starting_water_area(ident):
 
 
 class PocketWorld:
-    VERSION = 3
+    VERSION = 4
 
     def __init__(self, restored=None):
         restored = restored if isinstance(restored, dict) else {}
@@ -96,6 +99,21 @@ class PocketWorld:
                             isinstance(item.get("minute"), int) and
                             isinstance(item.get("message"), str)][-MAX_JOURNAL:],
             }
+            world = self.worlds[ident]
+            allowed = {entry[0] for entry in visitor_choices(ident)}
+            discoveries = old.get("discoveries", {})
+            if not isinstance(discoveries, dict):
+                discoveries = {}
+            world["discoveries"] = {
+                key: min(9999, self._int(discoveries, key, 0))
+                for key in allowed if self._int(discoveries, key, 0) > 0
+            }
+            visit = old.get("visit", {})
+            world["visit"] = {}
+            if (isinstance(visit, dict) and visit.get("kind") in allowed and
+                    isinstance(visit.get("minute"), int) and
+                    0 <= visit["minute"] <= world["minutes"]):
+                world["visit"] = {"kind": visit["kind"], "minute": visit["minute"]}
             if ident == "hybrid":
                 # Older hybrid worlds were born empty; give their saved village
                 # the same starter cottage and two residents without resetting age.
@@ -247,6 +265,7 @@ class PocketWorld:
         n = world["minutes"]
         ident = world["id"]
         roll = self._rand(world, 100)
+        self._visit(world, n, roll)
 
         if ident == "aquarium":
             self._step_aquarium(world, n)
@@ -288,6 +307,24 @@ class PocketWorld:
             self._event(world, labels[ident])
         if n == MATURITY_MINUTES:
             self._event(world, "30日を迎え、小さな世界が成熟しました")
+
+    def _visit(self, world, minute, roll):
+        discoveries = world["discoveries"]
+        if discoveries and minute % 3 != world["seed"] % 3:
+            return
+        source = world["id"]
+        if source == "aquarium":
+            areas = [area for area in WATER_AREAS if world["water_areas"][area]["unlocked"]]
+            source = areas[(minute // 3 + world["seed"]) % len(areas)]
+        total = sum(discoveries.values())
+        rare = roll < 8 or total % 10 == 9
+        index = 2 if rare else (0 if roll < 55 else 1)
+        kind, name, _ = VISITORS[source][index]
+        first = discoveries.get(kind, 0) == 0
+        discoveries[kind] = min(9999, discoveries.get(kind, 0) + 1)
+        world["visit"] = {"kind": kind, "minute": minute}
+        if first or rare:
+            self._event(world, ("珍しい来訪：%s" if rare else "初めての来訪：%s") % name)
 
     def tap(self, ident):
         world = self.worlds.get(ident)
@@ -389,6 +426,16 @@ class PocketWorld:
             data = {key: (value[:] if isinstance(value, list) else value)
                     for key, value in world.items() if key != "water_areas"}
             data["journal"] = [dict(item) for item in world["journal"]]
+            data["discoveries"] = dict(world["discoveries"])
+            data["visit"] = dict(world["visit"])
+            data["visitor_catalog"] = [
+                {"id": kind, "name": name, "rare": VISITOR_INFO[kind][3],
+                 "visits": world["discoveries"].get(kind, 0)}
+                for kind, name, _ in visitor_choices(ident)
+            ]
+            data["visitor"] = active_visit(world)
+            if data["visitor"] is not None:
+                data["visitor"]["frames"] = visitor_frames(data["visitor"]["id"])
             if "water_areas" in world:
                 data["water_areas"] = {key: dict(value)
                                        for key, value in world["water_areas"].items()}

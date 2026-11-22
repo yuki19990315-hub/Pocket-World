@@ -265,7 +265,7 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.7.1", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.8.0", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):
@@ -548,8 +548,9 @@ def main():
                             world=engine.worlds[screen.selected])
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display refresh failed:", exc)
-        if screen is not None and animation_ms >= 1400:
-            animation_ms %= 1400
+        animation_period = 250 if screen is not None and screen.frame_cache is not None else 1400
+        if screen is not None and animation_ms >= animation_period:
+            animation_ms %= animation_period
             try:
                 screen.animate(engine.worlds[screen.selected]["minutes"], motion,
                                world=engine.worlds[screen.selected])
