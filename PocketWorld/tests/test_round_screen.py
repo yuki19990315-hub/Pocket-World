@@ -3,6 +3,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "firmware"))
 from round_screen import (BatteryGauge, CST816Touch, FRAME_SIZE, GC9A01,
@@ -106,6 +107,77 @@ class Display:
 
 
 class RoundScreenTest(unittest.TestCase):
+    def test_native_frame_cache_reuses_invalidates_and_falls_back(self):
+        import round_screen
+        calls = []
+
+        def compose(output, early, late, settings):
+            calls.append(settings)
+            output[:] = early
+
+        def out_of_memory(*args):
+            raise MemoryError()
+
+        previous = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                os.mkdir("assets")
+                for stage in ("young", "mature"):
+                    with open("assets/nature-" + stage + ".dat", "wb") as file:
+                        file.write(b"\xf8\x00" * (FRAME_SIZE // 2))
+                with patch.object(round_screen, "_compose_pixels", compose):
+                    driver = Display()
+                    screen = RoundScreen(driver)
+                    self.assertTrue(screen.show(0, force=True))
+                    self.assertTrue(screen.show(0, force=True))
+                    self.assertEqual(len(calls), 1)
+                    with open("assets/nature-young.dat", "wb") as file:
+                        file.write(b"\x07\xe0" * (FRAME_SIZE // 2))
+                    screen.invalidate_frames()
+                    self.assertTrue(screen.show(0, force=True))
+                    self.assertEqual(len(calls), 2)
+                    self.assertEqual(screen.frame_cache["nature"][1][:2], b"\x07\xe0")
+                    screen.invalidate_frames()
+                    before = driver.rows
+                    with patch.object(round_screen, "_compose_pixels", out_of_memory):
+                        self.assertTrue(screen.show(0, force=True))
+                    self.assertIsNone(screen.frame_cache)
+                    self.assertEqual(driver.rows - before, 240)
+            finally:
+                os.chdir(previous)
+
+    def test_background_preload_preserves_selection_and_does_not_draw(self):
+        import round_screen
+        from world_model import PocketWorld
+
+        def compose(output, early, late, settings):
+            output[:] = early
+
+        previous = os.getcwd()
+        with tempfile.TemporaryDirectory() as directory:
+            try:
+                os.chdir(directory)
+                os.mkdir("assets")
+                for ident in ("nature", "city", "hybrid", "fantasy", "forest", "river"):
+                    for stage in ("young", "mid", "mature"):
+                        with open("assets/%s-%s.dat" % (ident, stage), "wb") as file:
+                            file.write(b"\xf8\x00" * (FRAME_SIZE // 2))
+                with patch.object(round_screen, "_compose_pixels", compose):
+                    driver = Display()
+                    screen = RoundScreen(driver)
+                    screen.choose("forest")
+                    engine = PocketWorld()
+                    for _ in range(6):
+                        self.assertTrue(screen.warm_next_frame(engine))
+                    self.assertFalse(screen.warm_next_frame(engine))
+                    self.assertEqual(screen.selected, "forest")
+                    self.assertEqual(screen.water_area, "river")
+                    self.assertEqual(driver.rows, 0)
+                    self.assertEqual(len(screen.frame_cache), 6)
+            finally:
+                os.chdir(previous)
+
     def test_day_tints_rgb565_and_city_lamps_appear_only_at_night(self):
         white=b"\xff\xff"
         self.assertEqual(ambience_row(white,"day"),white)

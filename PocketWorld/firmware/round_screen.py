@@ -1,9 +1,8 @@
 """GC9A01A round LCD + CST816S touch for Waveshare ESP32-S3-Touch-LCD-1.28.
 
-Device RGB565 artwork is streamed from /assets, one scanline at a time;
-no 115KB framebuffer or PNG decoder is required. Only the display controller
-has been simulated on CPython so far: actual SPI orientation/colour and touch
-must still be checked on the user's board before enabling deep sleep.
+Device RGB565 artwork uses native blending and up to eight cached frames
+when MicroPython and memory are available. A scanline path supports smaller
+heaps and PC tests. Display orientation and touch require device validation.
 
 Pin map: https://docs.waveshare.com/ESP32-S3-Touch-LCD-1.28
 GC9A01A initialization command data adapted from Adafruit_GC9A01A (BSD).
@@ -11,6 +10,53 @@ See THIRD_PARTY_NOTICES.md for attribution.
 """
 
 import time
+
+try:
+    import micropython
+except ImportError:
+    micropython = None
+
+
+_compose_pixels = None
+if micropython is not None:
+    @micropython.viper
+    def _compose_pixels(destination, early, late, settings):
+        """Blend and light RGB565 pixels using native integer arithmetic."""
+        output = ptr8(destination)
+        first = ptr8(early)
+        second = ptr8(late)
+        length = int(len(destination))
+        alpha = int(settings[0])
+        phase = int(settings[1])
+        for offset in range(0, length, 2):
+            a = (first[offset] << 8) | first[offset + 1]
+            b = (second[offset] << 8) | second[offset + 1]
+            red = (((a >> 11) & 31) * (255 - alpha) +
+                   ((b >> 11) & 31) * alpha + 127) // 255
+            green = (((a >> 5) & 63) * (255 - alpha) +
+                     ((b >> 5) & 63) * alpha + 127) // 255
+            blue = ((a & 31) * (255 - alpha) + (b & 31) * alpha + 127) // 255
+            if phase == 1:
+                red = red * 108 // 100 + 1
+                green = green * 93 // 100
+                blue = blue * 79 // 100
+            elif phase == 2:
+                red = red * 105 // 100 + 2
+                green = green * 72 // 100
+                blue = blue * 65 // 100
+            elif phase == 3:
+                red = red * 36 // 100
+                green = green * 40 // 100
+                blue = blue * 65 // 100 + 1
+            elif phase == 4:
+                red = red * 17 // 100
+                green = green * 18 // 100
+                blue = blue * 27 // 100
+            if red > 31:
+                red = 31
+            color = (red << 11) | (green << 5) | blue
+            output[offset] = color >> 8
+            output[offset + 1] = color & 255
 
 WIDTH = 240
 HEIGHT = 240
@@ -522,6 +568,7 @@ class RoundScreen:
         self.shake_last_id = None
         self.shake_frames = 0
         self.lighting_phase = "day"
+        self.frame_cache = {} if _compose_pixels is not None else None
 
     def choose(self, ident):
         if ident not in WORLD_IDS:
@@ -562,24 +609,28 @@ class RoundScreen:
         return None
 
     def show(self, minutes, force=False, world=None):
-        """Draw once on mode/day changes or scheduled refresh; no frame buffer."""
+        """Draw the current world, using a native full-frame path when available."""
         if not self.visible:
             return False
         early_path, mature_path, alpha = self._art_frames(minutes, world)
         if not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
-        with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
-            self.driver.window(0, 0, WIDTH, HEIGHT)
-            self.driver.start_pixels()
-            try:
-                for _ in range(HEIGHT):
-                    a, b = early.read(WIDTH * 2), mature.read(WIDTH * 2)
-                    if len(a) != WIDTH * 2 or len(b) != WIDTH * 2:
-                        raise OSError("Truncated display asset")
-                    self.driver.write_pixels(ambience_row(blend_row(a, b, alpha),
-                                                         self.lighting_phase))
-            finally:
-                self.driver.stop_pixels()
+        frame = self._get_frame(early_path, mature_path, alpha)
+        self.driver.window(0, 0, WIDTH, HEIGHT)
+        self.driver.start_pixels()
+        try:
+            if frame is not None:
+                self.driver.write_pixels(frame)
+            else:
+                with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
+                    for _ in range(HEIGHT):
+                        a, b = early.read(WIDTH * 2), mature.read(WIDTH * 2)
+                        if len(a) != WIDTH * 2 or len(b) != WIDTH * 2:
+                            raise OSError("Truncated display asset")
+                        self.driver.write_pixels(ambience_row(blend_row(a, b, alpha),
+                                                             self.lighting_phase))
+        finally:
+            self.driver.stop_pixels()
         self.particles = []
         self.people = []
         self.info_frames = 0
@@ -599,6 +650,58 @@ class RoundScreen:
                 self.driver.solid(100, 19, 31, 10, 0x05E0)
                 self.driver.solid(132, 22, 4, 4, 0x05E0)
         return True
+
+    def invalidate_frames(self):
+        if self.frame_cache is not None:
+            self.frame_cache.clear()
+
+    def _get_frame(self, early_path, mature_path, alpha):
+        if self.frame_cache is None:
+            return None
+        scene = self.water_area if self.selected == "aquarium" else self.selected
+        signature = (early_path, mature_path, alpha, self.lighting_phase)
+        cached = self.frame_cache.get(scene)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+        try:
+            with open(early_path, "rb") as early, open(mature_path, "rb") as mature:
+                a = early.read(FRAME_SIZE)
+                b = mature.read(FRAME_SIZE)
+            if len(a) != FRAME_SIZE or len(b) != FRAME_SIZE:
+                raise OSError("Truncated display asset")
+            frame = cached[1] if cached is not None else bytearray(FRAME_SIZE)
+            phase = ("day", "dawn", "dusk", "night", "lights_out").index(self.lighting_phase)
+            _compose_pixels(frame, a, b, (alpha, phase))
+            self.frame_cache[scene] = (signature, frame)
+            return frame
+        except MemoryError:
+            self.frame_cache = None
+            return None
+
+    def warm_next_frame(self, engine):
+        """Prepare one visible world's background between input/network polls."""
+        if self.frame_cache is None or not self.visible:
+            return False
+        selected, water_area = self.selected, self.water_area
+        try:
+            for ident in WORLD_IDS:
+                world = engine.worlds[ident]
+                areas = WATER_AREAS if ident == "aquarium" else (None,)
+                for area in areas:
+                    if area is not None and not world["water_areas"][area]["unlocked"]:
+                        continue
+                    self.selected = ident
+                    self.water_area = area or water_area
+                    early, mature, alpha = self._art_frames(world["minutes"], world)
+                    scene = area or ident
+                    signature = (early, mature, alpha, self.lighting_phase)
+                    cached = self.frame_cache.get(scene)
+                    if cached is None or cached[0] != signature:
+                        self._get_frame(early, mature, alpha)
+                        return True
+            return False
+        finally:
+            self.selected, self.water_area = selected, water_area
 
     def _town_lamps(self, world):
         """Light the starter cottage and more streetlamps as the town grows."""

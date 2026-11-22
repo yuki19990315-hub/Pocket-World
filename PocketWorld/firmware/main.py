@@ -386,6 +386,8 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
             length = int(headers.get("content-length", "-1"))
             filename = headers.get("x-file-name", "")
             count = receive_update(filename, length, body, client)
+            if screen is not None and filename.startswith("assets/"):
+                screen.invalidate_frames()
             response(client, "200 OK", "application/json",
                      json.dumps({"ok": True, "file": filename, "bytes": count,
                                  "restart_required": filename.endswith(".py")}))
@@ -567,6 +569,11 @@ def main():
         try:
             client, _ = server.accept()
         except OSError:
+            if screen is not None:
+                try:
+                    screen.warm_next_frame(engine)
+                except (OSError, ValueError, MemoryError) as exc:
+                    print("Display preload failed:", exc)
             continue
         result = False
         try:
