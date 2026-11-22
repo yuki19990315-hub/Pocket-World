@@ -44,6 +44,7 @@ class ParallaxWallpaperService : WallpaperService() {
             ?: sensors.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
         private val handler = Handler(Looper.getMainLooper())
         private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+        private val cyberRenderer = CyberCircuitRenderer()
 
         private var visible = false
         private var surfaceReady = false
@@ -255,6 +256,7 @@ class ParallaxWallpaperService : WallpaperService() {
             releaseImages()
             releaseVideo()
             when (WallpaperConfig.mode(prefs)) {
+                WallpaperConfig.CYBER -> Unit
                 WallpaperConfig.VIDEO -> {
                     val id = prefs.getString(WallpaperConfig.VIDEO_ID, null)
                     if (id != null) {
@@ -300,6 +302,9 @@ class ParallaxWallpaperService : WallpaperService() {
                 val tx = (tiltX + touchX * 0.45f).coerceIn(-1f, 1f) * strength
                 val ty = (tiltY + touchY * 0.45f).coerceIn(-1f, 1f) * strength
                 when (WallpaperConfig.mode(prefs)) {
+                    WallpaperConfig.CYBER -> cyberRenderer.draw(canvas, w, h, tx, ty, time,
+                        WallpaperConfig.cyberStyle(prefs), 1f, WallpaperConfig.glow(prefs),
+                        WallpaperConfig.cyberTiles(prefs))
                     WallpaperConfig.VIDEO -> drawVideo(canvas, w, h, tx, ty, time, breathing)
                     WallpaperConfig.CUSTOM -> drawCustom(canvas, w, h, tx, ty, time, breathing)
                     WallpaperConfig.POCKET -> drawPocket(canvas, w, h, tx, ty, time, breathing)

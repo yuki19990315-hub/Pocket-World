@@ -24,7 +24,10 @@ object WallpaperConfig {
     const val VIDEO_OFFSET_X = "video_offset_x_percent"
     const val VIDEO_OFFSET_Y = "video_offset_y_percent"
     const val TILT_ENABLED = "tilt_enabled"
+    const val CYBER_STYLE = "cyber_style"
+    const val CYBER_TILES = "cyber_tiles"
 
+    const val CYBER = "cyber"
     const val FANTASY = "fantasy"
     const val POCKET = "pocket"
     const val CUSTOM = "custom"
@@ -34,12 +37,15 @@ object WallpaperConfig {
     val worldNames = arrayOf("自然＋文明（浮遊島）", "自然", "ファンタジー", "森", "川と水辺", "街", "水槽", "深海")
     val stageNames = arrayOf("成長前", "成熟")
     val lightNames = arrayOf("光なし", "柔らかな光", "きらめく星くず", "木漏れ日", "ネオン", "夕焼けの逆光", "水面の反射")
+    val cyberStyleNames = arrayOf("サイバー回路／琥珀×紫", "オーロラガラス／青×紫", "ホログラム／緑×水色")
 
     fun preferences(context: Context): SharedPreferences = context.getSharedPreferences("depthworld", Context.MODE_PRIVATE)
     fun intensity(prefs: SharedPreferences) = (prefs.getInt(INTENSITY, 100) / 100f).coerceIn(0.5f, 2f)
     fun glow(prefs: SharedPreferences) = (prefs.getInt(GLOW, 85) / 100f).coerceIn(0f, 1f)
     fun fps(prefs: SharedPreferences) = if (prefs.getInt(FPS, 60) == 30) 30 else 60
-    fun mode(prefs: SharedPreferences) = prefs.getString(MODE, FANTASY) ?: FANTASY
+    fun mode(prefs: SharedPreferences) = prefs.getString(MODE, CYBER) ?: CYBER
+    fun cyberStyle(prefs: SharedPreferences) = prefs.getInt(CYBER_STYLE, 0).coerceIn(0, cyberStyleNames.lastIndex)
+    fun cyberTiles(prefs: SharedPreferences) = prefs.getBoolean(CYBER_TILES, true)
     fun world(prefs: SharedPreferences) = prefs.getInt(WORLD, 0).coerceIn(0, worldIds.lastIndex)
     fun stage(prefs: SharedPreferences) = prefs.getInt(STAGE, 1).coerceIn(0, 1)
     fun lightPreset(prefs: SharedPreferences) = prefs.getInt(LIGHT_PRESET, 1).coerceIn(0, lightNames.lastIndex)

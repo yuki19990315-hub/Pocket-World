@@ -119,11 +119,12 @@ class MainActivity : Activity() {
         setContentView(scroll)
 
         root.addView(title("DEPTHWORLD", 29f, accent))
-        root.addView(title("写真も動画も、傾けると世界が動く壁紙", 15f, muted))
+        root.addView(title("ネオン・写真・動画から立体壁紙を作ろう", 15f, muted))
 
         val picker = section(root, "壁紙の世界")
         val mode = WallpaperConfig.mode(prefs)
-        val names = listOf("写真・イラスト" to WallpaperConfig.CUSTOM,
+        val names = listOf("ネオン3D" to WallpaperConfig.CYBER,
+            "写真・イラスト" to WallpaperConfig.CUSTOM,
             "幻想世界" to WallpaperConfig.FANTASY,
             "PocketWorld" to WallpaperConfig.POCKET,
             "動画・AI動画" to WallpaperConfig.VIDEO)
@@ -139,6 +140,7 @@ class MainActivity : Activity() {
         }
 
         when (mode) {
+            WallpaperConfig.CYBER -> cyberSection(root)
             WallpaperConfig.CUSTOM -> customSection(root)
             WallpaperConfig.VIDEO -> videoSection(root)
             WallpaperConfig.POCKET -> pocketSection(root)
@@ -199,6 +201,41 @@ class MainActivity : Activity() {
             background = rounded(Color.BLACK)
         }
         box.addView(preview, LinearLayout.LayoutParams(-1, dp(145)).apply { topMargin = dp(12) })
+    }
+
+    private fun cyberSection(root: LinearLayout) {
+        val box = section(root, "3Dネオン・サーキット")
+        info(box, "動画の透明な電子回路とガラス風の奥行きを参考にした、オリジナルのライブ壁紙。回路・フレーム・タイルが傾きで別々に動きます。")
+        box.addView(title("デザインを選ぶ", 14f, accent),
+            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        val styles = Spinner(this)
+        styles.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_dropdown_item,
+            WallpaperConfig.cyberStyleNames)
+        styles.setSelection(WallpaperConfig.cyberStyle(prefs))
+        styles.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                prefs.edit().putInt(WallpaperConfig.CYBER_STYLE, position).apply()
+            }
+        }
+        box.addView(styles)
+        box.addView(Switch(this).apply {
+            text = "ガラス風のネオンタイルを表示"
+            setTextColor(Color.WHITE)
+            textSize = 14f
+            isChecked = WallpaperConfig.cyberTiles(prefs)
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean(WallpaperConfig.CYBER_TILES, checked).apply()
+            }
+        }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14) })
+        info(box, "タイルは壁紙の装飾です。実際のアプリアイコンは別に表示されます。通常のアイコンと重なる場合はタイルをOFFにしてください。")
+        val preview = CyberPreviewView(this)
+        box.addView(preview, LinearLayout.LayoutParams(dp(204), dp(453)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            topMargin = dp(17)
+        })
+        info(box, "上のプレビューを指で動かすと、3Dパララックスを試せます。")
+        info(box, "今後のホーム画面テーマ機能では、アイコンをタップして実際にアプリを開く機能も追加予定です。この壁紙版だけではアプリアイコンを置き換えません。")
     }
 
     private fun pocketSection(root: LinearLayout) {
