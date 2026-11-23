@@ -85,13 +85,13 @@ object MatteRefiner {
             if (value > 0.53f) detected++
             val t = ((value - 0.09f) / 0.82f).coerceIn(0f, 1f)
             val alpha = t * t * (3f - 2f * t)
-            val a = (alpha * 255f + 0.5f).toInt().coerceIn(0, 255)
+            val original = pixels[i]
+            val a = (alpha * Color.alpha(original) + 0.5f).toInt().coerceIn(0, 255)
             if (a == 0) {
                 pixels[i] = Color.TRANSPARENT
                 continue
             }
 
-            val original = pixels[i]
             if (a == 255) {
                 pixels[i] = Color.rgb(Color.red(original), Color.green(original), Color.blue(original))
                 continue
