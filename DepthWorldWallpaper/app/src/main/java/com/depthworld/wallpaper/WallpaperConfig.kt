@@ -41,7 +41,7 @@ object WallpaperConfig {
     val worldIds = arrayOf("hybrid", "nature", "fantasy", "forest", "river", "city", "aquarium", "deepsea")
     val worldNames = arrayOf("自然＋文明（浮遊島）", "自然", "ファンタジー", "森", "川と水辺", "街", "水槽", "深海")
     val stageNames = arrayOf("成長前", "成熟")
-    val lightNames = arrayOf("光なし", "柔らかな光", "きらめく星くず", "木漏れ日", "ネオン", "夕焼けの逆光", "水面の反射")
+    val lightNames = arrayOf("光なし", "柔らかな光", "きらめく星くず", "木漏れ日", "ネオン", "夕焼けの逆光", "水面の反射", "オーロラ", "ほたる", "雪のきらめき", "レンズフレア", "サイバー走査線", "ふわふわ粒子", "魔法の火の粉")
     val cyberStyleNames = arrayOf("サイバー回路／琥珀×紫", "オーロラガラス／青×紫", "ホログラム／緑×水色")
 
     fun preferences(context: Context): SharedPreferences = context.getSharedPreferences("depthworld", Context.MODE_PRIVATE)

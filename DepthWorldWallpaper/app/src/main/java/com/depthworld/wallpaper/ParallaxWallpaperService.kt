@@ -53,7 +53,6 @@ class ParallaxWallpaperService : WallpaperService() {
         private var listening = false
         private var powerSaveAtRegistration = power.isPowerSaveMode
         private var background: Bitmap? = null
-        private var glowBitmap: Bitmap? = null
         private var foreground: Bitmap? = null
         private var videoFrames: VideoFrames? = null
         private var videoStartUptime = 0L
@@ -259,11 +258,10 @@ class ParallaxWallpaperService : WallpaperService() {
         }
 
         private fun releaseImages() {
-            listOf(background, glowBitmap, foreground).filterNotNull().distinct().forEach {
+            listOf(background, foreground).filterNotNull().distinct().forEach {
                 if (!it.isRecycled) it.recycle()
             }
             background = null
-            glowBitmap = null
             foreground = null
         }
 
@@ -290,7 +288,6 @@ class ParallaxWallpaperService : WallpaperService() {
                 }
                 WallpaperConfig.CUSTOM -> {
                     background = loadCustom("background") ?: loadDrawable(R.drawable.fantasy_bg)
-                    glowBitmap = loadCustom("glow")
                     foreground = loadCustom("foreground")
                 }
                 WallpaperConfig.POCKET -> {
@@ -388,11 +385,6 @@ class ParallaxWallpaperService : WallpaperService() {
                                time: Float, breath: Float) {
             drawGradient(canvas, w, h, Color.rgb(12, 14, 42), Color.rgb(66, 59, 99))
             background?.let { drawCover(canvas, it, w, h, tx * w * .05f, ty * h * .05f, 1.45f) }
-            glowBitmap?.let {
-                paint.alpha = (255f * breath * WallpaperConfig.glow(prefs)).toInt().coerceIn(0, 255)
-                drawCover(canvas, it, w, h, tx * w * .12f, ty * h * .12f, 1.28f)
-                paint.alpha = 255
-            }
             val preset = WallpaperConfig.lightPreset(prefs)
             val strength = WallpaperConfig.glow(prefs) * breath
             LightEffects.behind(canvas, w, h, tx, ty, preset, strength, time)

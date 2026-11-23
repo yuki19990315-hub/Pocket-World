@@ -52,6 +52,19 @@ object LightEffects {
             6 -> {
                 halo(canvas, w * .52f + x, h * .72f + y, w * .76f, Color.rgb(77, 222, 255), amount * .75f)
             }
+            7 -> {
+                halo(canvas, w * .4f + x, h * .3f + y, w * .85f, Color.rgb(65, 245, 194), amount * .72f)
+                halo(canvas, w * .7f - x, h * .2f + y, w * .75f, Color.rgb(146, 108, 252), amount * .65f)
+            }
+            8 -> halo(canvas, w * .50f + x, h * .63f + y, w * .58f, Color.rgb(130, 245, 122), amount * .5f)
+            9 -> halo(canvas, w * .55f + x, h * .40f + y, w * .75f, Color.rgb(170, 222, 255), amount * .4f)
+            10 -> {
+                halo(canvas, w * .78f + x, h * .22f + y, w * .7f, Color.rgb(255, 231, 160), amount * .90f)
+                halo(canvas, w * .4f + x, h * .6f, w * .32f, Color.rgb(255, 161, 128), amount * .3f)
+            }
+            11 -> halo(canvas, w * .52f + x, h * .53f + y, w * .72f, Color.rgb(66, 225, 255), amount * .55f)
+            12 -> halo(canvas, w * .48f + x, h * .42f + y, w * .7f, Color.rgb(215, 215, 255), amount * .45f)
+            13 -> halo(canvas, w * .5f + x, h * .7f + y, w * .70f, Color.rgb(255, 135, 55), amount * .65f)
         }
     }
 
@@ -78,6 +91,33 @@ object LightEffects {
                         p.strokeWidth = w * .0015f
                         canvas.drawLine(x - r * 2f, y, x + r * 2f, y, p)
                         canvas.drawLine(x, y - r * 2f, x, y + r * 2f, p)
+                    }
+                }
+            }
+            7, 8, 9, 10, 11, 12, 13 -> {
+                for (i in 0 until (if (preset == 11) 24 else 36)) {
+                    val x = ((i * 91 + 29) % 307) / 307f * w + shift
+                    val seedY = ((i * 137 + 19) % 293) / 293f
+                    val phase = time * (.18f + (i % 4) * .05f)
+                    val y = (((seedY + (if (preset == 9) phase * .11f else -phase * .09f)) % 1f + 1f) % 1f) * h
+                    val pulse = .5f + .5f * sin(time * 1.3f + i.toFloat())
+                    val alpha = (amount * pulse * 185f).toInt().coerceIn(0,255)
+                    val rgb = when(preset) {
+                        7 -> Color.rgb(115, 255, 190)
+                        8 -> Color.rgb(175, 255, 135)
+                        9 -> Color.rgb(218, 245, 255)
+                        10 -> Color.rgb(255, 234, 178)
+                        11 -> Color.rgb(97, 233, 255)
+                        12 -> Color.rgb(231, 221, 255)
+                        else -> Color.rgb(255, 157, 64)
+                    }
+                    p.color = Color.argb(alpha, Color.red(rgb), Color.green(rgb), Color.blue(rgb))
+                    if(preset == 11) {
+                        p.strokeWidth = w * .0015f
+                        canvas.drawLine(0f,y,w,y+h*.006f,p)
+                    } else {
+                        val radius = w * (if(preset == 12) .006f else .003f)
+                        canvas.drawCircle(x,y,radius,p)
                     }
                 }
             }

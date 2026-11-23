@@ -49,7 +49,7 @@ assert service.attrib[android_ns + "exported"] == "true"
 assert not manifest.findall("uses-permission"), "unexpected Android permission requested"
 dependencies = (ROOT / "app/build.gradle").read_text()
 assert "play-services-mlkit-subject-segmentation:16.0.0-beta1" in dependencies
-assert "versionName '0.5.3'" in dependencies
+assert "versionName '0.5.4'" in dependencies
 assert "signingConfigs" in dependencies and "DEPTHWORLD_KEYSTORE_FILE" in dependencies
 assert "DEPTHWORLD_SIGNING_PASSWORD" in dependencies
 workflow = (ROOT / ".github/workflows/build-depthworld-apk.yml").read_text()
@@ -130,3 +130,7 @@ for key in ("CYBER_TIME_COLORS", "CYBER_BATTERY", "CYBER_RIPPLES"):
 
 print("OK: XML, Gradle wrapper/checksums, cyber-glass renderer and preview, video controls/AI mask smoothing, battery handling, source files, PNG assets, 16 PocketWorld scenes, no permissions")
 print("NOTE: Android SDK compile, APK installation, orientation and battery testing remain unverified")
+
+assert 'Triple("glow"' not in activity_code
+assert 'glowBitmap' not in engine_code
+assert 'setOf("background", "foreground")' in (code_dir / "ImageStore.kt").read_text()

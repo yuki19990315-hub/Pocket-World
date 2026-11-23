@@ -315,13 +315,12 @@ class MainActivity : Activity() {
         info(box, "数値を上げるほど輪郭のギザギザを滑らかにします。変更は次にAIで切り抜く写真・動画から適用されます。")
         info(box, "人物・ペット・物が対象。輪郭は色の境界を見ながらなめらかに補正します。以前に加工した写真は、同じ写真をもう一度選ぶと改善処理が適用されます。")
         addLightPicker(box)
-        info(box, "光の強さは下のスライダーで変更できます。")
-        box.addView(title("手動で3枚の画像を調整", 14f, accent),
+        info(box, "光はアプリ内蔵のエフェクトから選べます。画像ファイルの追加は不要です。")
+        box.addView(title("手動で背景と前景を調整", 14f, accent),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(16) })
         listOf(
             Triple("background", "① 背景画像を選ぶ", "画面全体の写真やイラスト"),
-            Triple("glow", "② 光の画像を選ぶ（任意）", "透過PNGの発光・粒子・光芒"),
-            Triple("foreground", "③ 前景画像を選ぶ（任意）", "被写体を切り抜いた透過PNG")
+            Triple("foreground", "② 前景画像を選ぶ（任意）", "被写体を切り抜いた透過PNG")
         ).forEach { (key, label, help) ->
             val file = ImageStore.file(this, key)
             box.addView(button("$label ${if (file.exists()) "✓" else ""}") { pickLayer(key) },

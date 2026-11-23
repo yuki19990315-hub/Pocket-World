@@ -8,7 +8,7 @@ import java.io.FileOutputStream
 
 /** Copies picker content privately; no storage permission or persistable URI is required. */
 object ImageStore {
-    private val layers = setOf("background", "glow", "foreground")
+    private val layers = setOf("background", "foreground")
     fun file(context: Context, layer: String): File {
         require(layer in layers)
         return File(File(context.filesDir, "custom_layers"), "$layer.image")
