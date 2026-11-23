@@ -37,29 +37,39 @@ object AutoCutout {
             ui.post {
                 val options = SubjectSegmenterOptions.Builder()
                     .enableForegroundConfidenceMask()
-                    .enableForegroundBitmap()
                     .build()
                 val segmenter = SubjectSegmentation.getClient(options)
                 val input = InputImage.fromBitmap(source, 0)
                 segmenter.process(input)
                     .addOnSuccessListener { segmentation ->
-                        val subject = segmentation.foregroundBitmap
                         val mask = segmentation.foregroundConfidenceMask
-                        if (subject == null || mask == null) {
+                        if (mask == null) {
                             segmenter.close()
                             source.recycle()
                             onDone(Result.failure(IllegalStateException("前景の被写体を認識できませんでした")))
                         } else {
-                            thread(name = "depthworld-background-repair") {
+                            thread(name = "depthworld-matte-refinement") {
+                                var background: Bitmap? = null
+                                var foreground: Bitmap? = null
                                 try {
-                                    val background = fillHiddenArea(source, mask)
-                                    writePng(app, background, "background")
+                                    val count = source.width * source.height
+                                    require(mask.capacity() >= count) { "AIマスクの画像サイズが一致しません" }
+                                    val values = FloatArray(count) { mask.get(it) }
+                                    val smoothness = WallpaperConfig.cutoutSmoothness(
+                                        WallpaperConfig.preferences(app))
+                                    val refined = MatteRefiner.refineMask(source, values, smoothness)
+                                    val repaired = fillHiddenArea(source, FloatBuffer.wrap(refined))
+                                    background = repaired
+                                    val subject = MatteRefiner.createForeground(source, repaired, refined)
+                                    foreground = subject
+                                    writePng(app, repaired, "background")
                                     writePng(app, subject, "foreground")
-                                    background.recycle()
                                     ui.post { onDone(Result.success(Unit)) }
                                 } catch (e: Exception) {
                                     ui.post { onDone(Result.failure(e)) }
                                 } finally {
+                                    background?.recycle()
+                                    foreground?.recycle()
                                     segmenter.close()
                                     source.recycle()
                                 }

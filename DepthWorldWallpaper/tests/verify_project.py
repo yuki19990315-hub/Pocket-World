@@ -26,6 +26,7 @@ required = [
             "ImageStore.kt",
             "ParallaxWallpaperService.kt",
             "AutoCutout.kt",
+            "MatteRefiner.kt",
             "LightEffects.kt",
             "VideoStore.kt",
             "CyberCircuitRenderer.kt",
@@ -48,7 +49,7 @@ assert service.attrib[android_ns + "exported"] == "true"
 assert not manifest.findall("uses-permission"), "unexpected Android permission requested"
 dependencies = (ROOT / "app/build.gradle").read_text()
 assert "play-services-mlkit-subject-segmentation:16.0.0-beta1" in dependencies
-assert "versionName '0.5.2'" in dependencies
+assert "versionName '0.5.3'" in dependencies
 assert "signingConfigs" in dependencies and "DEPTHWORLD_KEYSTORE_FILE" in dependencies
 assert "DEPTHWORLD_SIGNING_PASSWORD" in dependencies
 workflow = (ROOT / ".github/workflows/build-depthworld-apk.yml").read_text()
@@ -90,6 +91,15 @@ assert "LightEffects.behind" in engine_code and "LightEffects.inFront" in engine
 assert "onVisibilityChanged(visible: Boolean)" in engine_code
 assert "enableForegroundConfidenceMask()" in video_code
 assert "stabilizeMask" in video_code and "createForeground" in video_code
+matte_code = (code_dir / "MatteRefiner.kt").read_text()
+auto_code = (code_dir / "AutoCutout.kt").read_text()
+assert "MatteRefiner.refineMask" in auto_code and "MatteRefiner.refineMask" in video_code
+assert "MatteRefiner.createForeground" in auto_code and "MatteRefiner.createForeground" in video_code
+assert "WallpaperConfig.cutoutSmoothness" in auto_code and "WallpaperConfig.cutoutSmoothness" in video_code
+assert "WallpaperConfig.CUTOUT_SMOOTHNESS" in activity_code
+assert ".enableForegroundConfidenceMask()" in auto_code and ".enableForegroundBitmap()" not in auto_code
+assert "colorDistance" in matte_code and "Color.argb(a," in matte_code
+assert "abs(current - prior)" in video_code
 assert "MediaMetadataRetriever" in video_code
 assert "MAX_NORMAL_MS = 8_000L" in video_code and "MAX_AI_MS = 6_000L" in video_code
 assert "NORMAL_FPS = 20" in video_code and "AI_FPS = 10" in video_code

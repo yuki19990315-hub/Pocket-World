@@ -24,6 +24,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
@@ -93,6 +94,7 @@ object VideoStore {
                 val targetHeight = max(1, (sourceHeight * scale).toInt())
 
                 var previousMask: FloatArray? = null
+                val smoothness = WallpaperConfig.cutoutSmoothness(WallpaperConfig.preferences(app))
                 if (ai) {
                     segmenter = SubjectSegmentation.getClient(
                         SubjectSegmenterOptions.Builder()
@@ -124,13 +126,19 @@ object VideoStore {
                                 ?: error("${i + 1}枚目でAIマスクを取得できません")
                             val stabilized = stabilizeMask(mask, frame.width * frame.height, previousMask)
                             previousMask = stabilized
-                            val subject = createForeground(frame, stabilized)
+                            val refined = MatteRefiner.refineMask(frame, stabilized, smoothness)
+                            background = AutoCutout.fillHiddenArea(frame, FloatBuffer.wrap(refined), 1, 1)
                             try {
-                                background = AutoCutout.fillHiddenArea(frame, FloatBuffer.wrap(stabilized), 1, 1)
-                                writeBitmap(subject, File(staging, "fg_${i.toString().padStart(4, '0')}.png"),
-                                    Bitmap.CompressFormat.PNG, 100)
-                            } finally {
-                                if (subject !== frame && !subject.isRecycled) subject.recycle()
+                                val subject = MatteRefiner.createForeground(frame, background, refined)
+                                try {
+                                    writeBitmap(subject, File(staging, "fg_${i.toString().padStart(4, '0')}.png"),
+                                        Bitmap.CompressFormat.PNG, 100)
+                                } finally {
+                                    subject.recycle()
+                                }
+                            } catch (error: Exception) {
+                                background.recycle()
+                                throw error
                             }
                         } else {
                             background = frame
@@ -189,32 +197,20 @@ object VideoStore {
         }
     }
 
-    /** Slight temporal smoothing reduces flicker without pretending to track 3D geometry. */
+    /** Keep stable edges quiet while letting genuinely moving edges change promptly. */
     private fun stabilizeMask(mask: FloatBuffer, count: Int, previous: FloatArray?): FloatArray {
         require(mask.capacity() >= count) { "AIマスクのサイズが一致しません" }
         val output = FloatArray(count)
         for (i in 0 until count) {
-            val current = mask.get(i).coerceIn(0f, 1f)
-            output[i] = if (previous != null && previous.size == count)
-                (current * 0.83f + previous[i] * 0.17f) else current
+            val sampled = mask.get(i)
+            val current = if (sampled.isFinite()) sampled.coerceIn(0f, 1f) else 0f
+            output[i] = if (previous != null && previous.size == count) {
+                val prior = previous[i]
+                val persistence = 0.22f * (1f - abs(current - prior) * 3f).coerceIn(0f, 1f)
+                current * (1f - persistence) + prior * persistence
+            } else current
         }
         return output
-    }
-
-    /** Converts the ML mask into a transparent foreground with soft antialiased edges. */
-    private fun createForeground(source: Bitmap, confidence: FloatArray): Bitmap {
-        val count = source.width * source.height
-        val colors = IntArray(count)
-        source.getPixels(colors, 0, source.width, 0, 0, source.width, source.height)
-        var detected = 0
-        for (i in 0 until count) {
-            val c = confidence[i]
-            if (c > .53f) detected++
-            val alpha = (((c - .20f) / .63f).coerceIn(0f, 1f) * 255f).toInt()
-            colors[i] = (alpha shl 24) or (colors[i] and 0x00ffffff)
-        }
-        require(detected >= count / 500) { "被写体を認識できないフレームがありました" }
-        return Bitmap.createBitmap(colors, source.width, source.height, Bitmap.Config.ARGB_8888)
     }
 
     fun removeOldVideos(context: Context, keepId: String) {

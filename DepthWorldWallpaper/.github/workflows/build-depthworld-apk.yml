@@ -46,6 +46,8 @@ jobs:
           fi
       - name: Check source structure
         run: python3 "${{ steps.project.outputs.path }}/tests/verify_project.py"
+      - name: Compile Kotlin before signing
+        run: bash "${{ steps.project.outputs.path }}/gradlew" -p "${{ steps.project.outputs.path }}" --no-daemon --stacktrace :app:compileDebugKotlin
       - name: Restore permanent signing key
         shell: bash
         env:

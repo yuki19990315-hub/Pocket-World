@@ -310,7 +310,10 @@ class MainActivity : Activity() {
         info(box, "写真1枚からAIが主役を切り抜いて、背景と前景の2層を自動作成します。背景の隠れた部分は簡易補完です。")
         box.addView(button("✦ 写真1枚をAIで3D化する", selected = true) { pickLayer("auto") },
             LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(15) })
-        info(box, "人物・ペット・物が対象。被写体の境界は写真によって精度が変わります。失敗時は手動でも調整可能です。")
+        addSlider(box, "切り抜き輪郭の滑らかさ", WallpaperConfig.CUTOUT_SMOOTHNESS,
+            0, 100, 85) { "$it%" }
+        info(box, "数値を上げるほど輪郭のギザギザを滑らかにします。変更は次にAIで切り抜く写真・動画から適用されます。")
+        info(box, "人物・ペット・物が対象。輪郭は色の境界を見ながらなめらかに補正します。以前に加工した写真は、同じ写真をもう一度選ぶと改善処理が適用されます。")
         addLightPicker(box)
         info(box, "光の強さは下のスライダーで変更できます。")
         box.addView(title("手動で3枚の画像を調整", 14f, accent),
@@ -343,7 +346,9 @@ class MainActivity : Activity() {
         info(box, "標準モード：指定位置から最大8秒・20fps。背景がわずかに傾きで動きます。")
         box.addView(button("✦ 動画をAIで前景・背景に分ける") { pickLayer("video_ai") },
             LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = dp(14) })
-        info(box, "AIモード：指定位置から最大6秒・10fps。フレーム間で切り抜き輪郭を軽く平滑化し、前景を逆方向に動かします。")
+        info(box, "AIモード：最大6秒・10fps。輪郭を色に合わせて補正し、動きの大きい部分では残像を抑えながら前景を逆方向に動かします。以前の加工動画は再度取り込んでください。")
+        addSlider(box, "切り抜き輪郭の滑らかさ", WallpaperConfig.CUTOUT_SMOOTHNESS,
+            0, 100, 85) { "$it%" }
         val id = prefs.getString(WallpaperConfig.VIDEO_ID, null)
         if (id != null) {
             try {

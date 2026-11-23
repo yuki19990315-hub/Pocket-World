@@ -25,6 +25,7 @@ object WallpaperConfig {
     const val VIDEO_OFFSET_Y = "video_offset_y_percent"
     const val TILT_ENABLED = "tilt_enabled"
     const val INVERT_TILT_X = "invert_tilt_x"
+    const val CUTOUT_SMOOTHNESS = "cutout_smoothness"
     const val CYBER_STYLE = "cyber_style"
     const val CYBER_TILES = "cyber_tiles"
     const val CYBER_TIME_COLORS = "cyber_time_colors"
@@ -48,6 +49,8 @@ object WallpaperConfig {
     fun glow(prefs: SharedPreferences) = (prefs.getInt(GLOW, 85) / 100f).coerceIn(0f, 1f)
     fun fps(prefs: SharedPreferences) = if (prefs.getInt(FPS, 60) == 30) 30 else 60
     fun invertTiltX(prefs: SharedPreferences) = prefs.getBoolean(INVERT_TILT_X, true)
+    fun cutoutSmoothness(prefs: SharedPreferences) =
+        prefs.getInt(CUTOUT_SMOOTHNESS, 85).coerceIn(0, 100) / 100f
     fun mode(prefs: SharedPreferences) = prefs.getString(MODE, CYBER) ?: CYBER
     fun cyberStyle(prefs: SharedPreferences) = prefs.getInt(CYBER_STYLE, 0).coerceIn(0, cyberStyleNames.lastIndex)
     fun cyberTiles(prefs: SharedPreferences) = prefs.getBoolean(CYBER_TILES, true)
