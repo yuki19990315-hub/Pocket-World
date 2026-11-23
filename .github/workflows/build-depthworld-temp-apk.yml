@@ -28,7 +28,8 @@ jobs:
       - name: Build temporary APK
         run: bash DepthWorldWallpaper/gradlew -p DepthWorldWallpaper --no-daemon :app:assembleDebug
       - name: Verify APK
-        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs DepthWorldWallpaper/app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs DepthWorldWallpaper/app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
         with:
           name: DepthWorldWallpaper-v0.5.4-temporary-debug-apk
