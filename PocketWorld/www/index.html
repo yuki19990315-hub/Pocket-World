@@ -494,12 +494,13 @@
     rect(0,0,360,360,"#000000");
     const image=worldArt.jellyfish?.photo;
     if(image?.complete&&image.naturalWidth){
-      const tick=milliseconds/250,t=milliseconds/1000,phase=(t%5)/5,cycle=Math.floor(t/5);
-      const contraction=phase<.28?Math.sin(Math.PI*phase/.28):0;
-      const progress=phase<.28?.55*(1-Math.cos(Math.PI*phase/.28))/2:.55+.45*(phase-.28)/.72;
-      const travel=(cycle+progress)*5,delayed=(((t-.5)%5+5)%5)/5;
-      const drag=delayed<.28?Math.sin(Math.PI*delayed/.28):0;
-      const wake=Math.trunc(Math.max(-8,Math.min(8,(4.55*Math.cos(travel*.13)+2.48*Math.cos(travel*.31))*drag)));
+      const tick=milliseconds/250,t=milliseconds/1000,u=t%5,cycle=Math.floor(t/5);
+      const contraction=u<.65?.5-.5*Math.cos(Math.PI*u/.65):Math.exp(-(u-.65)/.8)*(.5+.5*Math.cos(Math.PI*(u-.65)/4.35));
+      const impulse=1-(1+u/.6)*Math.exp(-u/.6),normalization=1-(1+5/.6)*Math.exp(-5/.6);
+      const travel=(cycle+.3*u/5+.7*impulse/normalization)*5,lag=(((t-.4)%5)+5)%5;
+      const drag=Math.exp(-lag/1.05)*Math.sin(lag*3.8);
+      const velocityX=4.55*Math.cos(travel*.13)+2.48*Math.cos(travel*.31);
+      const wake=Math.trunc(Math.max(-8,Math.min(8,velocityX*drag))),lean=Math.trunc(Math.max(-3,Math.min(3,velocityX*.35)));
       const dx=Math.floor(Math.trunc(Math.sin(travel*.13)*35+Math.sin(travel*.31)*8)*1840/1024);
       const dy=Math.floor(Math.trunc(Math.sin(travel*.11)*24+Math.sin(travel*.27)*7)*1840/1024);
       const xs=1840+Math.trunc(contraction*96),ys=1840-Math.trunc(contraction*64);
@@ -507,14 +508,17 @@
       if(motionState.connected)ctx.translate(motionState.tilt_x*7.5,motionState.tilt_y*7.5);
       if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
       for(let y=0;y<240;y++){
-        const sy=(((y-96)*ys)>>10)+96-dy;
+        const baseY=(((y-96)*1840)>>10)+96-dy;
+        const sy=baseY<=145?(((y-96)*ys)>>10)+96-dy:baseY+Math.floor(49*(ys-1840)/1840);
+        const rowXs=1840+Math.floor((xs-1840)*Math.max(0,Math.min(49,145-sy))/49);
         if(sy<0||sy>239)continue;
         let wave=0;
-        if(sy>145){let triangle=(sy+Math.floor(Math.floor(tick*2.5)*4/5))%64;triangle=triangle<32?triangle:64-triangle;wave=(((triangle-16)*(sy-145))>>9)+((wake*(sy-145))>>6);}
-        const left=((-120*xs)>>10)+120-dx+wave;
-        const sourceLeft=Math.max(0,left),sourceRight=Math.min(240,left+240*xs/1024);
-        const targetLeft=(sourceLeft-left)*1024/xs*1.5;
-        ctx.drawImage(image,sourceLeft,sy,sourceRight-sourceLeft,1,targetLeft,y*1.5,(sourceRight-sourceLeft)*1024/xs*1.5,1.5);
+        if(sy>145){const angle=((sy+Math.floor(Math.floor(tick*2.5)*4/5))%64)*Math.PI/32;wave=((Math.round(16*Math.sin(angle))*(sy-145))>>9)+((wake*(sy-145))>>6);}
+        wave+=((sy-120)*lean)>>6;
+        const left=((-120*rowXs)>>10)+120-dx+wave;
+        const sourceLeft=Math.max(0,left),sourceRight=Math.min(240,left+240*rowXs/1024);
+        const targetLeft=(sourceLeft-left)*1024/rowXs*1.5;
+        ctx.drawImage(image,sourceLeft,sy,sourceRight-sourceLeft,1,targetLeft,y*1.5,(sourceRight-sourceLeft)*1024/rowXs*1.5,1.5);
       }
       ctx.restore();ctx.imageSmoothingEnabled=false;
     }

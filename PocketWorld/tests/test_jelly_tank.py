@@ -15,6 +15,15 @@ import round_screen
 
 
 class JellyTankTest(unittest.TestCase):
+    def test_passive_reopening_and_damped_arm_recoil(self):
+        self.assertGreater(swim_state(2.6)[0],swim_state(4.8)[0])
+        self.assertGreater(swim_state(4.8)[0],swim_state(8)[0])
+        early = swim_state(6.4)[1]-swim_state(6)[1]
+        late = swim_state(14.4)[1]-swim_state(14)[1]
+        self.assertGreater(early,late)
+        self.assertGreater(swim_state(3.6)[2],0)
+        self.assertLess(swim_state(7.2)[2],0)
+
     def test_background_is_black(self):
         source = ASSET.read_bytes()
         self.assertEqual(source[:480], bytes(480))
@@ -29,11 +38,11 @@ class JellyTankTest(unittest.TestCase):
             self.assertEqual(output,bytes(len(output)),phase)
 
     def test_propulsion_matches_squeeze_and_oral_arms_follow_later(self):
-        self.assertGreater(swim_state(3)[0], .9)
+        self.assertGreater(swim_state(2.6)[0], .99)
         pulse_step = swim_state(3)[1]-swim_state(2)[1]
         coast_step = swim_state(13)[1]-swim_state(12)[1]
         self.assertGreater(pulse_step, coast_step*3)
-        self.assertEqual(swim_state(2)[2], 0)
+        self.assertEqual(swim_state(0)[2], 0)
         self.assertGreater(swim_state(4)[2], 0)
         previous = 0
         for tick in range(400):
@@ -45,7 +54,7 @@ class JellyTankTest(unittest.TestCase):
     def test_small_jelly_roams_without_leaving_the_round_display(self):
         centers = []
         for tick in range(0, 2400, 7):
-            dx, dy, xs, ys, _, _ = motion_parameters(tick, 5, -5)
+            dx, dy, xs, ys, _, _, _ = motion_parameters(tick, 5, -5)
             self.assertGreaterEqual(xs, 1840)
             self.assertGreaterEqual(ys, 1776)
             centers.append((120+dx*1024/xs, 96+(24+dy)*1024/ys))

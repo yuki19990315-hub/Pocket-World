@@ -21,3 +21,5 @@ Swimming and contraction share a five-second cycle. A smooth propulsion phase ad
 The black-background revision bakes the RGB565 matte during asset building, avoiding per-frame matte work. Outside the animal the device writes RGB565 zero and the phone uses pure black. The device targets 100ms animation updates; elapsed time, rather than frame count, advances swimming. Browser motion is no longer quantized to 250ms.
 
 The listener is nonblocking with a short idle yield, because the device socket timeout otherwise adds roughly 100ms to each loop and limits the observed cadence. Accepted requests still use the existing bounded service timeouts.
+
+The natural-motion revision uses a smooth impulse response with exponentially decaying speed, a quick local bell squeeze and slow passive reopening. Oral arms do not scale rigidly with the bell; sinusoidal flex, delayed damped recoil and slight lean follow the travel. This remains an artistic deformation model, not a biological simulation.
