@@ -15,3 +15,5 @@ Anatomical references consulted before choosing the visual:
 Build: `node PocketWorld/tools/build_display_assets.js` converts the master PNG and refreshes the Android pack. It requires Node and sharp. The Python build_jelly_tank.py entry point delegates to that builder.
 
 The smaller floating revision uses inverse scale 1840/1024 (about 56% linear size), wide slow two-frequency drift, source-relative oral-arm sway, and luminance/edge matting onto uniform water. Both initial world selection and animation show the same small animal.
+
+Swimming and contraction share a five-second cycle. A smooth propulsion phase advances the trajectory faster during the bell squeeze, then coasts more slowly. Oral-arm drag follows the propulsion with a half-second delay. Linear scale and the path extent remain unchanged.

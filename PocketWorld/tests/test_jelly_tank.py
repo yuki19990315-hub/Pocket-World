@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'firmware'))
 
-from jelly_tank import motion_parameters, warp_pixels, warp_reference
+from jelly_tank import motion_parameters, warp_pixels, warp_reference, swim_state
 from pathlib import Path
 ASSET = Path(__file__).resolve().parents[1] / "firmware/assets/jellyfish-tank.dat"
 from world_model import PocketWorld
@@ -15,10 +15,24 @@ import round_screen
 
 
 class JellyTankTest(unittest.TestCase):
+    def test_propulsion_matches_squeeze_and_oral_arms_follow_later(self):
+        self.assertGreater(swim_state(3)[0], .9)
+        pulse_step = swim_state(3)[1]-swim_state(2)[1]
+        coast_step = swim_state(13)[1]-swim_state(12)[1]
+        self.assertGreater(pulse_step, coast_step*3)
+        self.assertEqual(swim_state(2)[2], 0)
+        self.assertGreater(swim_state(4)[2], 0)
+        previous = 0
+        for tick in range(400):
+            travel = swim_state(tick)[1]
+            self.assertGreaterEqual(travel, previous)
+            self.assertLess(travel-previous, 1)
+            previous = travel
+
     def test_small_jelly_roams_without_leaving_the_round_display(self):
         centers = []
         for tick in range(0, 2400, 7):
-            dx, dy, xs, ys, _ = motion_parameters(tick, 5, -5)
+            dx, dy, xs, ys, _, _ = motion_parameters(tick, 5, -5)
             self.assertGreaterEqual(xs, 1840)
             self.assertGreaterEqual(ys, 1776)
             centers.append((120+dx*1024/xs, 96+(24+dy)*1024/ys))

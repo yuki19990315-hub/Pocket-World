@@ -2,17 +2,30 @@
 import math
 
 
-def motion_parameters(tick, tilt_x=0, tilt_y=0):
+def swim_state(tick):
+    """One clock drives bell squeeze, propulsion and delayed oral-arm drag."""
     t = tick / 4
-    phase = (t % 4.8) / 4.8
+    cycle = int(t // 5)
+    phase = (t % 5) / 5
     contraction = math.sin(math.pi * phase / .28) if phase < .28 else 0
-    return ((int(math.sin(t*.13)*35 + math.sin(t*.31)*8)+tilt_x)*1840//1024,
-            (int(math.sin(t*.11)*24 + math.sin(t*.27)*7-contraction*2)+tilt_y)*1840//1024,
-            1840+int(contraction*96),1840-int(contraction*64),int(tick))
+    progress = (.55*(1-math.cos(math.pi*phase/.28))/2 if phase < .28
+                else .55+.45*(phase-.28)/.72)
+    travel = (cycle+progress)*5
+    delayed = ((t-.5)%5)/5
+    drag = math.sin(math.pi*delayed/.28) if delayed < .28 else 0
+    velocity_x = 4.55*math.cos(travel*.13)+2.48*math.cos(travel*.31)
+    return contraction, travel, int(max(-8,min(8,velocity_x*drag)))
+
+
+def motion_parameters(tick, tilt_x=0, tilt_y=0):
+    contraction, travel, wake = swim_state(tick)
+    return ((int(math.sin(travel*.13)*35 + math.sin(travel*.31)*8)+tilt_x)*1840//1024,
+            (int(math.sin(travel*.11)*24 + math.sin(travel*.27)*7)+tilt_y)*1840//1024,
+            1840+int(contraction*96),1840-int(contraction*64),int(tick),wake)
 
 
 def warp_reference(destination, source, settings):
-    dx, dy, xs, ys, tick = settings
+    dx, dy, xs, ys, tick, wake = settings
     for y in range(240):
         sy = (((y-96)*ys)>>10)+96-dy
         wave = 0
@@ -20,6 +33,7 @@ def warp_reference(destination, source, settings):
             triangle = (sy + tick*2) % 64
             triangle = triangle if triangle < 32 else 64-triangle
             wave = ((triangle-16)*(sy-145)) >> 9
+            wave += (wake*(sy-145)) >> 6
         for x in range(240):
             sx = (((x-120)*xs)>>10)+120-dx+wave
             b = (y*240+x)*2
@@ -52,6 +66,7 @@ if micropython is not None:
         dx, dy = int(settings[0]), int(settings[1])
         xs, ys = int(settings[2]), int(settings[3])
         tick = int(settings[4])
+        wake = int(settings[5])
         for y in range(240):
             sy = (((y-96)*ys)>>10)+96-dy
             wave = 0
@@ -60,6 +75,7 @@ if micropython is not None:
                 if triangle > 31:
                     triangle = 64-triangle
                 wave = ((triangle-16)*(sy-145))>>9
+                wave += (wake*(sy-145))>>6
             for x in range(240):
                 sx = (((x-120)*xs)>>10)+120-dx+wave
                 b = (y*240+x)*2
