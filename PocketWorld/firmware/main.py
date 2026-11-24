@@ -479,7 +479,7 @@ def main():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(address)
     server.listen(2)
-    server.settimeout(0.02)
+    server.setblocking(False)
     print("Sanny Pocket World ready on http://192.168.4.1/")
 
     previous = time.ticks_ms()
@@ -494,6 +494,7 @@ def main():
     mic_react_ms = 60000  # First confirmed sample can create one event.
     uptime_ms = 0
     pending_display_save = None
+    frame_warm_at = 0
     while True:
         now = time.ticks_ms()
         delta = max(0, time.ticks_diff(now, previous))
@@ -595,11 +596,14 @@ def main():
                 try:
                     pending_display_save = save_display_when_idle(
                         screen, pending_display_save, uptime_ms)
-                    screen.warm_next_frame(engine)
+                    if uptime_ms-frame_warm_at >= 250:
+                        frame_warm_at = uptime_ms
+                        screen.warm_next_frame(engine)
                 except (OSError, ValueError, MemoryError) as exc:
                     if pending_display_save is not None:
                         pending_display_save = uptime_ms
                     print("Display background update failed:", exc)
+            time.sleep_ms(2)
             continue
         result = False
         try:
