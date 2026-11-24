@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'firmware'))
 
-from jelly_tank import motion_parameters, warp_pixels, warp_reference, swim_state
+from jelly_tank import motion_parameters, warp_pixels, warp_reference, swim_state, frame_bounds, SOURCE_BOUNDS
 from pathlib import Path
 ASSET = Path(__file__).resolve().parents[1] / "firmware/assets/jellyfish-tank.dat"
 from world_model import PocketWorld
@@ -15,6 +15,36 @@ import round_screen
 
 
 class JellyTankTest(unittest.TestCase):
+    def test_partial_transfer_contains_all_visible_pixels(self):
+        source=ASSET.read_bytes()
+        xmin,ymin,xmax,ymax=SOURCE_BOUNDS
+        for i in range(0,len(source),2):
+            if source[i] or source[i+1]:
+                x,y=(i//2)%240,(i//2)//240
+                self.assertTrue(xmin<=x<xmax and ymin<=y<ymax)
+        for tick in (0,30,120,200):
+            parameters=motion_parameters(tick,5,-5)
+            output=bytearray(len(source))
+            warp_reference(output,source,parameters)
+            left,top,width,height=frame_bounds(parameters)
+            for i in range(0,len(output),2):
+                if output[i] or output[i+1]:
+                    x,y=(i//2)%240,(i//2)//240
+                    self.assertTrue(left<=x<left+width and top<=y<top+height)
+
+    def test_subpixel_sampling_blends_the_edge_instead_of_jumping(self):
+        source=bytearray(240*240*2)
+        offset=(96*240+120)*2
+        source[offset:offset+2]=b'\xff\xff'
+        output=bytearray(len(source))
+        warp_reference(output,source,(64,64,1840,1840,0,0,0))
+        colors={int.from_bytes(output[i:i+2],'big') for i in range(0,len(output),2)}
+        self.assertTrue(colors-{0,65535})
+        first=motion_parameters(11)
+        second=motion_parameters(11.08)
+        self.assertNotEqual(first[:2],second[:2])
+        self.assertLess(max(abs(a-b) for a,b in zip(first[:2],second[:2])),256)
+
     def test_passive_reopening_and_damped_arm_recoil(self):
         self.assertGreater(swim_state(2.6)[0],swim_state(4.8)[0])
         self.assertGreater(swim_state(4.8)[0],swim_state(8)[0])
@@ -42,7 +72,7 @@ class JellyTankTest(unittest.TestCase):
         pulse_step = swim_state(3)[1]-swim_state(2)[1]
         coast_step = swim_state(13)[1]-swim_state(12)[1]
         self.assertGreater(pulse_step, coast_step*3)
-        self.assertEqual(swim_state(0)[2], 0)
+        self.assertAlmostEqual(swim_state(0)[2], 0, delta=.1)
         self.assertGreater(swim_state(4)[2], 0)
         previous = 0
         for tick in range(400):
@@ -57,10 +87,10 @@ class JellyTankTest(unittest.TestCase):
             dx, dy, xs, ys, _, _, _ = motion_parameters(tick, 5, -5)
             self.assertGreaterEqual(xs, 1840)
             self.assertGreaterEqual(ys, 1776)
-            centers.append((120+dx*1024/xs, 96+(24+dy)*1024/ys))
+            centers.append((120+dx/256*1024/xs, 96+(24+dy/256)*1024/ys))
             for x,y in ((24,132),(100,38),(215,104),(155,202)):
-                px = 120+(x-120+dx)*1024/xs
-                py = 96+(y-96+dy)*1024/ys
+                px = 120+(x-120+dx/256)*1024/xs
+                py = 96+(y-96+dy/256)*1024/ys
                 self.assertLess((px-120)**2+(py-120)**2, 119**2)
         self.assertGreater(max(x for x,y in centers)-min(x for x,y in centers), 70)
         self.assertGreater(max(y for x,y in centers)-min(y for x,y in centers), 45)

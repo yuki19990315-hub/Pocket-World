@@ -23,3 +23,7 @@ The black-background revision bakes the RGB565 matte during asset building, avoi
 The listener is nonblocking with a short idle yield, because the device socket timeout otherwise adds roughly 100ms to each loop and limits the observed cadence. Accepted requests still use the existing bounded service timeouts.
 
 The natural-motion revision uses a smooth impulse response with exponentially decaying speed, a quick local bell squeeze and slow passive reopening. Oral arms do not scale rigidly with the bell; sinusoidal flex, delayed damped recoil and slight lean follow the travel. This remains an artistic deformation model, not a biological simulation.
+
+The subpixel revision retains 8-bit fractional positions and samples RGB565 with bilinear interpolation. It clears the render buffer efficiently and transfers the union of old/new animal bounds, rather than sending all 240x240 pixels each time. Browser drawing also retains fractional positions and bends.
+
+The latest target is 60ms updates. RGB565 interpolation uses 1/32-pixel sampling weights and word-sized memory access. Entirely black areas are skipped, source cropping is checked against the master asset, and dirty bounds include every visible pixel.

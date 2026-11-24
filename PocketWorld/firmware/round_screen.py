@@ -11,7 +11,7 @@ See THIRD_PARTY_NOTICES.md for attribution.
 
 import time
 from scene_events import active_visit, visitor_frames, visitor_position
-from jelly_tank import motion_parameters, warp_pixels
+from jelly_tank import motion_parameters, warp_pixels, frame_bounds
 
 try:
     import micropython
@@ -25,11 +25,11 @@ _fill_region = None
 if micropython is not None:
     @micropython.viper
     def _copy_region(destination, frame, left: int, top: int, width: int, height: int):
-        output = ptr8(destination)
-        source = ptr8(frame)
-        stride = width * 2
+        output = ptr16(destination)
+        source = ptr16(frame)
+        stride = width
         for row in range(height):
-            origin = ((top + row) * 240 + left) * 2
+            origin = (top + row) * 240 + left
             offset = row * stride
             for column in range(stride):
                 output[offset + column] = source[origin + column]
@@ -588,6 +588,8 @@ class RoundScreen:
         self.brightness_setting = 65
         self.animation_tick = 0
         self.jelly_elapsed_ms = 0
+        self.jelly_region = None
+        self.jelly_transfer = None
         self.particles = []
         self.people = []
         self.info_frames = 0
@@ -650,7 +652,9 @@ class RoundScreen:
             if len(self.animation_buffer) < FRAME_SIZE:
                 self.animation_buffer = bytearray(FRAME_SIZE)
             output = memoryview(self.animation_buffer)[:FRAME_SIZE]
-            warp_pixels(output, frame, motion_parameters(self.jelly_elapsed_ms/250))
+            parameters = motion_parameters(self.jelly_elapsed_ms/250)
+            warp_pixels(output, frame, parameters)
+            self.jelly_region = frame_bounds(parameters)
             frame = output
         self.driver.window(0, 0, WIDTH, HEIGHT)
         self.driver.start_pixels()
@@ -963,11 +967,28 @@ class RoundScreen:
             if len(self.animation_buffer) < FRAME_SIZE:
                 self.animation_buffer = bytearray(FRAME_SIZE)
             output = memoryview(self.animation_buffer)[:FRAME_SIZE]
-            warp_pixels(output, frame, motion_parameters(self.jelly_elapsed_ms/250, tilt_x, tilt_y))
-            self.driver.window(0, 0, WIDTH, HEIGHT)
+            parameters = motion_parameters(self.jelly_elapsed_ms/250, tilt_x, tilt_y)
+            warp_pixels(output, frame, parameters)
+            region = frame_bounds(parameters)
+            previous = self.jelly_region or region
+            left = min(previous[0],region[0])
+            top = min(previous[1],region[1])
+            right = max(previous[0]+previous[2],region[0]+region[2])
+            bottom = max(previous[1]+previous[3],region[1]+region[3])
+            self.jelly_region = region
+            pixels = output
+            if _copy_region is not None:
+                if self.jelly_transfer is None:
+                    self.jelly_transfer = bytearray(FRAME_SIZE)
+                length = (right-left)*(bottom-top)*2
+                pixels = memoryview(self.jelly_transfer)[:length]
+                _copy_region(pixels,output,left,top,right-left,bottom-top)
+                self.driver.window(left,top,right-left,bottom-top)
+            else:
+                self.driver.window(0,0,WIDTH,HEIGHT)
             self.driver.start_pixels()
             try:
-                self.driver.write_pixels(output)
+                self.driver.write_pixels(pixels)
             finally:
                 self.driver.stop_pixels()
             if self.battery_state and self.battery_state.get("low"):

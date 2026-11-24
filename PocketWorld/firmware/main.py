@@ -551,7 +551,7 @@ def main():
                 print("Display refresh failed:", exc)
         animation_period = 250 if screen is not None and screen.frame_cache is not None else 1400
         if screen is not None and screen.frame_cache is not None and screen.selected == "jellyfish":
-            animation_period = 100
+            animation_period = 60
         if screen is not None and animation_ms >= animation_period:
             animation_elapsed = animation_ms-animation_ms%animation_period
             animation_ms %= animation_period
