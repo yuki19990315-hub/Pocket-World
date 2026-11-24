@@ -146,7 +146,7 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
   if (world === 'jellyfish') {
     assert.match(nodes.get('stats').innerHTML, /<strong>1<\/strong><em>匹<\/em>/);
     assert.ok(nodes.get('visitor-now').textContent.includes('ずっと一匹'));
-    assert.ok(paintColors.includes('#f0acff'), 'one moon jelly is rendered');
+    assert.ok(paintColors.includes('#a191ae'), 'one moon jelly is rendered');
   }
   if (liveState) {
     assert.ok(translated > 0, 'onboard tilt moves the scene');

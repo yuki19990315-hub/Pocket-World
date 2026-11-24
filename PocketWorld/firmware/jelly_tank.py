@@ -26,34 +26,41 @@ def background():
 
 
 def jelly_rectangles(tick, tilt_x=0, tilt_y=0):
-    """Breathing bell, four gonads and eight softly trailing tentacles."""
+    """Translucent moon-jelly bell, short fringe and four trailing oral arms."""
     t = tick / 4
-    pulse = (math.sin(t * 1.45) + 1) / 2
-    cx = 120 + int(math.sin(t * .23) * 15) + tilt_x
-    cy = 93 + int(math.sin(t * .38) * 9) + tilt_y
-    radius = 24 + int(pulse * 5)
-    height = 18 + int((1 - pulse) * 5)
-    rectangles = []
-    # Tentacles behind the bell: one connected jellyfish, never a shoal.
-    for i in range(8):
-        root = cx + int((i - 3.5) * radius / 4.3)
-        length = 37 + (i * 11) % 24
+    phase = (t % 4.8) / 4.8
+    # A short contraction followed by a slower relaxation.
+    contraction = math.sin(math.pi * min(1, phase / .28)) if phase < .28 else 0
+    cx = 120 + int(math.sin(t * .17) * 15) + tilt_x
+    cy = 97 + int(math.sin(t * .29) * 8 - contraction * 4) + tilt_y
+    radius = 31 - int(contraction * 7)
+    height = 18 + int(contraction * 8)
+    out = []
+    # Four soft oral arms, with delayed motion toward their tips.
+    for i in range(4):
+        length = 33 + (i * 7) % 14
         for step in range(0, length, 3):
-            sway = int(math.sin(t * .9 + step * .11 + i * .7) * (2 + step / 10))
-            color = 0x8CDE if i % 2 else 0x5BD8
-            rectangles.append((root + sway, cy + step, 1 if i % 2 else 2, 4, color))
+            x = cx + (i - 1.5) * 5 + math.sin(t * .7 - step * .10 + i) * (1 + step * .12)
+            out.append((int(x), cy + step, 2, 4, rgb(68 + step//2, 94 + step//2, 119 + step//2)))
     for row in range(height):
-        portion = row / height
-        half = max(1, int(radius * math.sqrt(max(0, 1 - (1 - portion) ** 2))))
-        color = (0x7C5A if row < height // 3 else 0x6BBA)
-        rectangles.append((cx - half, cy - height + row, half * 2, 1, color))
+        z = 1 - row / height
+        half = max(1, int(radius * math.sqrt(max(0, 1-z*z))))
+        # A dim transparent center, brighter curved margins, no opaque purple fill.
+        out.append((cx-half,cy-height+row,half*2,1,rgb(17+int(z*14),43+int(z*19),62+int(z*24))))
         if half > 3:
-            rectangles.extend(((cx - half, cy - height + row, 1, 1, 0xBE7F),
-                               (cx + half - 1, cy - height + row, 1, 1, 0xBE7F)))
-    rectangles.append((cx - radius + 1, cy, radius * 2 - 2, 2, 0xD6DF))
-    for dx, dy in ((-5, -9), (3, -9), (-5, -4), (3, -4)):
-        rectangles.extend(((cx + dx, cy + dy, 4, 1, 0xF57F),
-                           (cx + dx - 1, cy + dy + 1, 1, 3, 0xF57F),
-                           (cx + dx + 4, cy + dy + 1, 1, 3, 0xF57F),
-                           (cx + dx, cy + dy + 4, 4, 1, 0xF57F)))
-    return rectangles
+            out.extend(((cx-half,cy-height+row,2,1,rgb(113,151,173)),
+                        (cx+half-2,cy-height+row,2,1,rgb(113,151,173))))
+            inner=max(1,half-3)
+            out.extend(((cx-inner,cy-height+row,1,1,rgb(53,87,111)),
+                        (cx+inner-1,cy-height+row,1,1,rgb(53,87,111))))
+    out.append((cx-radius+1,cy,radius*2-2,1,rgb(169,194,207)))
+    # Fine, short marginal tentacles are distinct from the four oral arms.
+    for i in range(17):
+        x=cx-radius+2+int(i*(radius*2-4)/16)
+        out.append((x,cy+1,1,3+(i*3)%5,rgb(70,111,140)))
+    for dx,dy in ((-7,-10),(3,-10),(-7,-4),(3,-4)):
+        out.extend(((cx+dx,cy+dy,4,1,rgb(161,145,174)),
+                    (cx+dx-1,cy+dy+1,1,3,rgb(113,111,146)),
+                    (cx+dx+4,cy+dy+1,1,3,rgb(113,111,146)),
+                    (cx+dx,cy+dy+4,4,1,rgb(161,145,174))))
+    return out
