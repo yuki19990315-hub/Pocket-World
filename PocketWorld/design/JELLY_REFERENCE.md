@@ -1,10 +1,15 @@
-# Moon jelly visual references
+# Approved photographic-style moon jelly
 
-- Monterey Bay Aquarium, moon-jelly exhibit camera: https://www.montereybayaquarium.org/cams-videos/live-cams/moon-jelly-cam
-- East Idaho Aquarium, translucency and four horseshoe-shaped gonads: https://eastidahoaquarium.com/touch-moon-jelly-exhibit/
-- Cleveland Metroparks, moon-jelly anatomy, coloration and muscular contraction: https://resourcelibrary.clevelandmetroparks.com/api/assets/documents/5b49aa60-73a3-401e-950e-f5bd872d5c5e
-- Official aquarium video reference: https://www.youtube.com/watch?v=7N9-FODmuBA
+The user approved an image generated with the built-in image generator on 2026-11-24 after rejecting both procedural line-art versions. It is synthetic artwork, not an aquarium photograph. The selected 240px master is `assets/jellyfish-tank.png`. The same image supplies the phone PNG and the device RGB565 background. No third-party photos or video frames are bundled.
 
-The implementation is original procedural artwork. No video frames or third-party artwork are bundled. These sources informed a pale, transparent-looking bell, four internal rings, short marginal tentacles and separate oral arms. The pulse uses a brief contraction followed by a longer relaxation; its numerical timing is an artistic approximation, not a measurement from the video. Video playback has not been inspected frame by frame.
+Prompt: Exactly one authentic Aurelia moon jelly, underwater macro photograph aesthetic, fully visible on dark navy water; translucent rounded bell, fine radial canals and four faint horseshoe-shaped gonads; many short marginal tentacles and four folded frilly oral arms. Pale blue-white aquarium lighting, subtle lavender internal structures. No pixel art, outlines, neon, text, tank rim, other animals or bubbles. Soft optical depth and natural tissue folds.
 
-The 240px LCD uses dim interior strips and brighter curved edges rather than true optical translucency. Background restoration, a single animal and fast world switching remain required. The phone uses the same silhouette and motion model at its own refresh rate.
+The runtime deforms the approved image with subtle bell contraction, drift and lower-body sway. This is a stylized animation of a still image, not a physically simulated animal or prerecorded video. Viper and CPython reference paths use the same bounded RGB565 sampling. The LCD transfers a single full frame per animation tick; other worlds retain their existing cache and animation paths.
+
+Anatomical references consulted before choosing the visual:
+- https://pop.kaiyukan.com/area/exhibition/104.html
+- https://www.aquariumbcn.com/en/especies/jellyfish/moon-jellyfish/
+- https://eastidahoaquarium.com/touch-moon-jelly-exhibit/
+- https://www.montereybayaquarium.org/cams-videos/live-cams/moon-jelly-cam
+
+Build: `node PocketWorld/tools/build_display_assets.js` converts the master PNG and refreshes the Android pack. It requires Node and sharp. The Python build_jelly_tank.py entry point delegates to that builder.

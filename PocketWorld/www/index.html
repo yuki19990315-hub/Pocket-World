@@ -149,6 +149,10 @@
       worldArt[name][phase]=img;
     });
   });
+  if(typeof Image!=="undefined"){
+    const photo=new Image();photo.src=assetBase+"jellyfish-tank.png";
+    worldArt.jellyfish={photo};
+  }
   const startTime = Date.now();
   let demoMinutes = 0;
   const houseMilestones=[180,720,1440,2880,4320,5760,8640,10080,14400,20160,28800,36000,43200];
@@ -472,43 +476,31 @@
     return true;
   }
   function drawJellyTank(world,milliseconds){
-    const t=milliseconds/1000,phase=(t%4.8)/4.8;
-    const contraction=phase<.28?Math.sin(Math.PI*Math.min(1,phase/.28)):0;
-    const cx=120+Math.trunc(Math.sin(t*.17)*15),cy=97+Math.trunc(Math.sin(t*.29)*8-contraction*4);
-    const radius=31-Math.trunc(contraction*7),height=18+Math.trunc(contraction*8);
     hitAreas=[];
     ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
-    ctx.save();if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}ctx.scale(1.5,1.5);
-    for(let y=0;y<240;y++){
-      const glow=Math.max(0,1-((y-93)/165)**2);
-      rect(0,y,240,1,"rgb("+Math.floor(3+glow*5)+","+Math.floor(11+glow*21)+","+Math.floor(25+glow*34)+")");
-    }
-    ctx.strokeStyle="#0d263a";ctx.lineWidth=1;ctx.beginPath();ctx.arc(120,120,108.5,Math.PI*1.14,Math.PI*1.86);ctx.stroke();
-    ctx.fillStyle="#071c2b";ctx.beginPath();ctx.ellipse(120,204,65,7,0,0,Math.PI*2);ctx.fill();
-    if(motionState.connected)ctx.translate(motionState.tilt_x*8,motionState.tilt_y*8);
-    for(let i=0;i<4;i++){
-      const length=33+(i*7)%14;
-      for(let step=0;step<length;step+=3){
-        const x=cx+(i-1.5)*5+Math.sin(t*.7-step*.10+i)*(1+step*.12);
-        rect(Math.trunc(x),cy+step,2,4,"rgb("+(68+Math.floor(step/2))+","+(94+Math.floor(step/2))+","+(119+Math.floor(step/2))+")");
+    rect(0,0,360,360,"#010d25");
+    const image=worldArt.jellyfish?.photo;
+    if(image?.complete&&image.naturalWidth){
+      const tick=Math.floor(milliseconds/250),t=tick/4,phase=(t%4.8)/4.8;
+      const contraction=phase<.28?Math.sin(Math.PI*phase/.28):0;
+      const dx=Math.trunc(Math.sin(t*.17)*3);
+      const dy=Math.trunc(Math.sin(t*.29)*2-contraction*2);
+      const xs=1024+Math.trunc(contraction*64),ys=1024-Math.trunc(contraction*40);
+      ctx.save();ctx.imageSmoothingEnabled=true;
+      if(motionState.connected)ctx.translate(motionState.tilt_x*7.5,motionState.tilt_y*7.5);
+      if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}
+      for(let y=0;y<240;y++){
+        const sy=Math.max(0,Math.min(239,(((y-96)*ys)>>10)+96-dy));
+        let wave=0;
+        if(y>145){let triangle=(y+tick*2)%64;triangle=triangle<32?triangle:64-triangle;wave=((triangle-16)*(y-145))>>9;}
+        const left=((-120*xs)>>10)+120-dx+wave;
+        const sourceLeft=Math.max(0,left),sourceRight=Math.min(240,left+240*xs/1024);
+        const targetLeft=(sourceLeft-left)*1024/xs*1.5;
+        ctx.drawImage(image,sourceLeft,sy,sourceRight-sourceLeft,1,targetLeft,y*1.5,(sourceRight-sourceLeft)*1024/xs*1.5,1.5);
       }
+      ctx.restore();ctx.imageSmoothingEnabled=false;
     }
-    for(let row=0;row<height;row++){
-      const z=1-row/height,half=Math.max(1,Math.trunc(radius*Math.sqrt(Math.max(0,1-z*z))));
-      rect(cx-half,cy-height+row,half*2,1,"rgb("+(17+Math.trunc(z*14))+","+(43+Math.trunc(z*19))+","+(62+Math.trunc(z*24))+")");
-      if(half>3){
-        rect(cx-half,cy-height+row,2,1,"#7197ad");rect(cx+half-2,cy-height+row,2,1,"#7197ad");
-        const inner=Math.max(1,half-3);
-        rect(cx-inner,cy-height+row,1,1,"#35576f");rect(cx+inner-1,cy-height+row,1,1,"#35576f");
-      }
-    }
-    rect(cx-radius+1,cy,radius*2-2,1,"#a9c2cf");
-    for(let i=0;i<17;i++)rect(cx-radius+2+Math.trunc(i*(radius*2-4)/16),cy+1,1,3+(i*3)%5,"#466f8c");
-    for(const [dx,dy] of [[-7,-10],[3,-10],[-7,-4],[3,-4]]){
-      rect(cx+dx,cy+dy,4,1,"#a191ae");rect(cx+dx-1,cy+dy+1,1,3,"#716f92");
-      rect(cx+dx+4,cy+dy+1,1,3,"#716f92");rect(cx+dx,cy+dy+4,4,1,"#a191ae");
-    }
-    ctx.restore();drawDayLighting(world);ctx.restore();
+    drawDayLighting(world);ctx.restore();
   }
   function drawScene(world, t){
     if(selected==="jellyfish"){drawJellyTank(world,t);return;}

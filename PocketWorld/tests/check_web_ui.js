@@ -111,7 +111,7 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
   }
   assert.ok(illustrated ? artworkDrawn > 0 : drawn > 50,
     'canvas draws the illustration or substantial procedural scene');
-  if (illustrated) {
+  if (illustrated && world !== "jellyfish") {
     if (world === 'nature') {
       assert.ok(paintColors.includes('#c2dd58'), 'sapling sways at birth');
       assert.ok(!paintColors.includes('#c5edfa'), 'meadow starts without blue water overlay');
@@ -146,7 +146,7 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
   if (world === 'jellyfish') {
     assert.match(nodes.get('stats').innerHTML, /<strong>1<\/strong><em>匹<\/em>/);
     assert.ok(nodes.get('visitor-now').textContent.includes('ずっと一匹'));
-    assert.ok(paintColors.includes('#a191ae'), 'one moon jelly is rendered');
+    assert.ok(artworkDrawn > 0, 'approved moon jelly image is rendered');
   }
   if (liveState) {
     assert.ok(translated > 0, 'onboard tilt moves the scene');
@@ -183,7 +183,7 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
   ]) await runPreview(world, area, false, true);
   await runPreview('aquarium', 'deepsea', true);
   await runPreview('nature', 'river', true, true, true);
-  await runPreview('jellyfish', 'river');
-  await runPreview('jellyfish', 'river', true);
+  await runPreview('jellyfish', 'river', false, true);
+  await runPreview('jellyfish', 'river', true, true);
   process.stdout.write('Pocket World UI: scene/lock/tiny resident smoke tests passed\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

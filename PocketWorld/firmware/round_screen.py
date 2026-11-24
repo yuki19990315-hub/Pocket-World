@@ -11,7 +11,7 @@ See THIRD_PARTY_NOTICES.md for attribution.
 
 import time
 from scene_events import active_visit, visitor_frames, visitor_position
-from jelly_tank import jelly_rectangles
+from jelly_tank import motion_parameters, warp_pixels
 
 try:
     import micropython
@@ -942,6 +942,35 @@ class RoundScreen:
         early_path, mature_path, alpha = self._art_frames(minutes, world)
         frame = self._get_frame(early_path, mature_path, alpha)
         old_regions = [(x, y, size, size) for x, y, size, _ in self.particles]
+        if self.selected == "jellyfish":
+            if frame is None or self.lighting_phase == "lights_out":
+                return False
+            tilt_x, tilt_y = 0, 0
+            if motion is not None:
+                effect = motion.snapshot()
+                if effect.get("connected"):
+                    tilt_x = int(max(-1, min(1, effect.get("tilt_x", 0))) * 5)
+                    tilt_y = int(max(-1, min(1, effect.get("tilt_y", 0))) * 5)
+            self.animation_tick += 1
+            if len(self.animation_buffer) < FRAME_SIZE:
+                self.animation_buffer = bytearray(FRAME_SIZE)
+            output = memoryview(self.animation_buffer)[:FRAME_SIZE]
+            warp_pixels(output, frame, motion_parameters(self.animation_tick, tilt_x, tilt_y))
+            self.driver.window(0, 0, WIDTH, HEIGHT)
+            self.driver.start_pixels()
+            try:
+                self.driver.write_pixels(output)
+            finally:
+                self.driver.stop_pixels()
+            if self.battery_state and self.battery_state.get("low"):
+                self.driver.solid(97, 16, 43, 16, 0x18C3)
+                self.driver.solid(100, 19, 31, 10, 0xF800)
+                self.driver.solid(132, 22, 4, 4, 0xF800)
+            elif self.battery_state and self.battery_state.get("charging") is True:
+                self.driver.solid(97, 16, 43, 16, 0x0427)
+                self.driver.solid(100, 19, 31, 10, 0x05E0)
+                self.driver.solid(132, 22, 4, 4, 0x05E0)
+            return True
         old_regions.extend((x, y, 1, 3) for x, y in self.people)
         if self.visitor_rect is not None:
             old_regions.append(self.visitor_rect)
@@ -1002,14 +1031,6 @@ class RoundScreen:
         if self.selected == "city" and self.lighting_phase == "night":
             rectangles.extend(self._lamp_rectangles(world))
         rectangles.extend(self._visitor_rectangles(world))
-        if self.selected == "jellyfish" and self.lighting_phase != "lights_out":
-            jelly = jelly_rectangles(self.animation_tick, tilt_x, tilt_y)
-            rectangles.extend(jelly)
-            left = min(item[0] for item in jelly)
-            top = min(item[1] for item in jelly)
-            right = max(item[0] + item[2] for item in jelly)
-            bottom = max(item[1] + item[3] for item in jelly)
-            self.visitor_rect = (left, top, right - left, bottom - top)
         if frame is not None:
             self._paint_animation(frame, old_regions, rectangles)
         else:

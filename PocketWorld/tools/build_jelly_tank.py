@@ -1,10 +1,4 @@
-"""Regenerate the code-authored RGB565 backdrop; run before the JS pack builder."""
+"""Build the approved jelly PNG as RGB565 and refresh the Android pack."""
 from pathlib import Path
-import sys
-
-root = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(root / 'firmware'))
-from jelly_tank import background
-
-(root / 'firmware' / 'assets' / 'jellyfish-tank.dat').write_bytes(background())
-print('Built quiet single-jelly tank: 240 x 240 RGB565')
+import subprocess
+subprocess.run(['node', str(Path(__file__).with_name('build_display_assets.js'))], check=True)

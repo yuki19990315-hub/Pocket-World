@@ -5,7 +5,9 @@ import unittest
 from unittest.mock import patch
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'firmware'))
 
-from jelly_tank import background, jelly_rectangles
+from jelly_tank import motion_parameters, warp_pixels, warp_reference
+from pathlib import Path
+ASSET = Path(__file__).resolve().parents[1] / "firmware/assets/jellyfish-tank.dat"
 from world_model import PocketWorld
 from scene_events import active_visit
 from test_scene_events import CanvasDriver
@@ -35,14 +37,15 @@ class JellyTankTest(unittest.TestCase):
         self.assertIsNone(snapshot['visitor'])
         self.assertEqual(PocketWorld(restored.persistable()).worlds['jellyfish'], world)
 
-    def test_bell_and_tentacles_move_inside_round_screen(self):
-        self.assertNotEqual(jelly_rectangles(0), jelly_rectangles(8))
-        for tick in range(0, 400, 7):
-            for tilt in (-8, 8):
-                for x, y, w, h, color in jelly_rectangles(tick, tilt, -tilt):
-                    self.assertTrue(0 <= color <= 65535)
-                    for px, py in ((x, y), (x+w, y+h)):
-                        self.assertLess((px-120)**2 + (py-120)**2, 120**2)
+    def test_approved_image_warp_moves_without_mutating_the_source(self):
+        source = ASSET.read_bytes()
+        first, second = bytearray(len(source)), bytearray(len(source))
+        warp_pixels(first, source, motion_parameters(1))
+        warp_pixels(second, source, motion_parameters(8, 5, -5))
+        self.assertNotEqual(first, second)
+        self.assertEqual(source, ASSET.read_bytes())
+        self.assertEqual(len(first), 240*240*2)
+        self.assertGreater(len(set(first)), 32)
 
     def test_moving_jelly_erases_previous_frame_and_does_not_read_flash(self):
         previous = os.getcwd()
@@ -50,7 +53,7 @@ class JellyTankTest(unittest.TestCase):
             try:
                 os.chdir(directory)
                 os.mkdir('assets')
-                frame = background()
+                frame = ASSET.read_bytes()
                 with open('assets/jellyfish-tank.dat', 'wb') as file:
                     file.write(frame)
                 def compose(output, early, late, settings):
@@ -65,10 +68,12 @@ class JellyTankTest(unittest.TestCase):
                         for tick in range(4):
                             screen.animate(0, world=world)
                         actual = bytes(driver.buffer)
-                        expected = CanvasDriver()
-                        expected.buffer[:] = frame
-                        for rectangle in jelly_rectangles(4):
-                            expected.solid(*rectangle)
-                        self.assertEqual(actual, expected.buffer)
+                        expected = bytearray(len(frame))
+                        warp_reference(expected,frame,motion_parameters(4))
+                        self.assertEqual(actual, expected)
+                        screen.battery_state = {"low": True}
+                        screen.animate(0, world=world)
+                        offset = (19*240+100)*2
+                        self.assertEqual(driver.buffer[offset:offset+2], b"\xf8\x00")
             finally:
                 os.chdir(previous)
