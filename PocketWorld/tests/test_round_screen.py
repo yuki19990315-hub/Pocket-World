@@ -165,18 +165,22 @@ class RoundScreenTest(unittest.TestCase):
                     for stage in ("young", "mid", "mature"):
                         with open("assets/%s-%s.dat" % (ident, stage), "wb") as file:
                             file.write(b"\xf8\x00" * (FRAME_SIZE // 2))
+                with open("assets/jellyfish-tank.dat", "wb") as file:
+                    file.write(b"\xf8\x00" * (FRAME_SIZE // 2))
                 with patch.object(round_screen, "_compose_pixels", compose):
                     driver = Display()
                     screen = RoundScreen(driver)
-                    screen.choose("forest")
+                    screen.choose("aquarium")
                     engine = PocketWorld()
-                    for _ in range(6):
+                    for step in range(7):
                         self.assertTrue(screen.warm_next_frame(engine))
+                        if step == 1:
+                            self.assertIn("jellyfish", screen.frame_cache)
                     self.assertFalse(screen.warm_next_frame(engine))
-                    self.assertEqual(screen.selected, "forest")
+                    self.assertEqual(screen.selected, "aquarium")
                     self.assertEqual(screen.water_area, "river")
                     self.assertEqual(driver.rows, 0)
-                    self.assertEqual(len(screen.frame_cache), 6)
+                    self.assertEqual(len(screen.frame_cache), 7)
             finally:
                 os.chdir(previous)
 

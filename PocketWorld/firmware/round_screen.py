@@ -716,7 +716,11 @@ class RoundScreen:
             return False
         selected, water_area = self.selected, self.water_area
         try:
-            for ident in WORLD_IDS:
+            index = WORLD_IDS.index(selected)
+            neighbors = (selected, WORLD_IDS[(index + 1) % len(WORLD_IDS)],
+                         WORLD_IDS[(index - 1) % len(WORLD_IDS)])
+            order = neighbors + tuple(ident for ident in WORLD_IDS if ident not in neighbors)
+            for ident in order:
                 world = engine.worlds[ident]
                 areas = WATER_AREAS if ident == "aquarium" else (None,)
                 for area in areas:
