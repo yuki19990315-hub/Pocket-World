@@ -15,6 +15,20 @@ import round_screen
 
 
 class JellyTankTest(unittest.TestCase):
+    def test_small_jelly_roams_without_leaving_the_round_display(self):
+        centers = []
+        for tick in range(0, 2400, 7):
+            dx, dy, xs, ys, _ = motion_parameters(tick, 5, -5)
+            self.assertGreaterEqual(xs, 1840)
+            self.assertGreaterEqual(ys, 1776)
+            centers.append((120+dx*1024/xs, 96+(24+dy)*1024/ys))
+            for x,y in ((24,132),(100,38),(215,104),(155,202)):
+                px = 120+(x-120+dx)*1024/xs
+                py = 96+(y-96+dy)*1024/ys
+                self.assertLess((px-120)**2+(py-120)**2, 119**2)
+        self.assertGreater(max(x for x,y in centers)-min(x for x,y in centers), 70)
+        self.assertGreater(max(y for x,y in centers)-min(y for x,y in centers), 45)
+
     def test_old_save_keeps_progress_and_adds_exactly_one_jelly(self):
         old = PocketWorld()
         old.advance(3600)

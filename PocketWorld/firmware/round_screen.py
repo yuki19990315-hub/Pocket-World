@@ -645,6 +645,12 @@ class RoundScreen:
         frame = self._get_frame(early_path, mature_path, alpha)
         if frame is None and not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
+        if self.selected == "jellyfish" and frame is not None:
+            if len(self.animation_buffer) < FRAME_SIZE:
+                self.animation_buffer = bytearray(FRAME_SIZE)
+            output = memoryview(self.animation_buffer)[:FRAME_SIZE]
+            warp_pixels(output, frame, motion_parameters(self.animation_tick))
+            frame = output
         self.driver.window(0, 0, WIDTH, HEIGHT)
         self.driver.start_pixels()
         try:
