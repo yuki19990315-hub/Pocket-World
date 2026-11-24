@@ -304,6 +304,11 @@
   function activePhase(){return previewPhase==="auto"?(powerState.day_phase||"day"):previewPhase;}
   function drawDayLighting(world){
     const phase=activePhase();
+    if(selected==="jellyfish"){
+      const opacity={dawn:0,dusk:.3,night:.65,lights_out:1}[phase]||0;
+      if(opacity){ctx.fillStyle="rgba(0,0,0,"+opacity+")";ctx.fillRect(0,0,360,360);}
+      return;
+    }
     const shade={dawn:"#f5b15a29",dusk:"#a85c526e",night:"#071833ad",lights_out:"#040f25d9"}[phase];
     if(shade){ctx.fillStyle=shade;ctx.fillRect(0,0,360,360);}
     if(selected!=="city"||phase!=="night")return;
@@ -486,10 +491,10 @@
   function drawJellyTank(world,milliseconds){
     hitAreas=[];
     ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
-    rect(0,0,360,360,"#000829");
+    rect(0,0,360,360,"#000000");
     const image=worldArt.jellyfish?.photo;
     if(image?.complete&&image.naturalWidth){
-      const tick=Math.floor(milliseconds/250),t=tick/4,phase=(t%5)/5,cycle=Math.floor(t/5);
+      const tick=milliseconds/250,t=milliseconds/1000,phase=(t%5)/5,cycle=Math.floor(t/5);
       const contraction=phase<.28?Math.sin(Math.PI*phase/.28):0;
       const progress=phase<.28?.55*(1-Math.cos(Math.PI*phase/.28))/2:.55+.45*(phase-.28)/.72;
       const travel=(cycle+progress)*5,delayed=(((t-.5)%5+5)%5)/5;
@@ -505,7 +510,7 @@
         const sy=(((y-96)*ys)>>10)+96-dy;
         if(sy<0||sy>239)continue;
         let wave=0;
-        if(sy>145){let triangle=(sy+tick*2)%64;triangle=triangle<32?triangle:64-triangle;wave=(((triangle-16)*(sy-145))>>9)+((wake*(sy-145))>>6);}
+        if(sy>145){let triangle=(sy+Math.floor(Math.floor(tick*2.5)*4/5))%64;triangle=triangle<32?triangle:64-triangle;wave=(((triangle-16)*(sy-145))>>9)+((wake*(sy-145))>>6);}
         const left=((-120*xs)>>10)+120-dx+wave;
         const sourceLeft=Math.max(0,left),sourceRight=Math.min(240,left+240*xs/1024);
         const targetLeft=(sourceLeft-left)*1024/xs*1.5;

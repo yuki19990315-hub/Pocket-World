@@ -17,3 +17,5 @@ Build: `node PocketWorld/tools/build_display_assets.js` converts the master PNG 
 The smaller floating revision uses inverse scale 1840/1024 (about 56% linear size), wide slow two-frequency drift, source-relative oral-arm sway, and luminance/edge matting onto uniform water. Both initial world selection and animation show the same small animal.
 
 Swimming and contraction share a five-second cycle. A smooth propulsion phase advances the trajectory faster during the bell squeeze, then coasts more slowly. Oral-arm drag follows the propulsion with a half-second delay. Linear scale and the path extent remain unchanged.
+
+The black-background revision bakes the RGB565 matte during asset building, avoiding per-frame matte work. Outside the animal the device writes RGB565 zero and the phone uses pure black. The device targets 100ms animation updates; elapsed time, rather than frame count, advances swimming. Browser motion is no longer quantized to 250ms.

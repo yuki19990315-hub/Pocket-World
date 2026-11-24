@@ -549,11 +549,14 @@ def main():
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display refresh failed:", exc)
         animation_period = 250 if screen is not None and screen.frame_cache is not None else 1400
+        if screen is not None and screen.frame_cache is not None and screen.selected == "jellyfish":
+            animation_period = 100
         if screen is not None and animation_ms >= animation_period:
+            animation_elapsed = animation_ms-animation_ms%animation_period
             animation_ms %= animation_period
             try:
                 screen.animate(engine.worlds[screen.selected]["minutes"], motion,
-                               world=engine.worlds[screen.selected])
+                               world=engine.worlds[screen.selected], elapsed_ms=animation_elapsed)
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display animation failed:", exc)
         if microphone is not None and mic_ms >= 250:

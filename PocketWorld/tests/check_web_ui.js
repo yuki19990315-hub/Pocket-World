@@ -147,6 +147,11 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
     assert.match(nodes.get('stats').innerHTML, /<strong>1<\/strong><em>匹<\/em>/);
     assert.ok(nodes.get('visitor-now').textContent.includes('ずっと一匹'));
     assert.ok(artworkDrawn > 0, 'approved moon jelly image is rendered');
+    paintColors.length=0;
+    phaseButtons.find(button=>button.dataset.phase==='night').click();
+    frame(1700);
+    assert.ok(paintColors.includes('#000000'));
+    assert.ok(!paintColors.includes('#071833ad'),'jelly background stays black at night');
   }
   if (liveState) {
     assert.ok(translated > 0, 'onboard tilt moves the scene');

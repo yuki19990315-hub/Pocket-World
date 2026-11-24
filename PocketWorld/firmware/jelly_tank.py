@@ -21,7 +21,7 @@ def motion_parameters(tick, tilt_x=0, tilt_y=0):
     contraction, travel, wake = swim_state(tick)
     return ((int(math.sin(travel*.13)*35 + math.sin(travel*.31)*8)+tilt_x)*1840//1024,
             (int(math.sin(travel*.11)*24 + math.sin(travel*.27)*7)+tilt_y)*1840//1024,
-            1840+int(contraction*96),1840-int(contraction*64),int(tick),wake)
+            1840+int(contraction*96),1840-int(contraction*64),int(tick*2.5),wake)
 
 
 def warp_reference(destination, source, settings):
@@ -30,24 +30,19 @@ def warp_reference(destination, source, settings):
         sy = (((y-96)*ys)>>10)+96-dy
         wave = 0
         if sy > 145:
-            triangle = (sy + tick*2) % 64
+            triangle = (sy + tick*4//5) % 64
             triangle = triangle if triangle < 32 else 64-triangle
             wave = ((triangle-16)*(sy-145)) >> 9
             wave += (wake*(sy-145)) >> 6
         for x in range(240):
             sx = (((x-120)*xs)>>10)+120-dx+wave
             b = (y*240+x)*2
-            color = 0x0045
+            color = 0
             if 0 <= sx < 240 and 0 <= sy < 240:
                 a = (sy*240+sx)*2
                 color = source[a]*256+source[a+1]
-                weight = min(16,sx,239-sx,sy,239-sy)
-                weight = min(weight,max(0,(color>>11)*2+((color>>5)&63)-8))
-                if weight < 16:
-                    red = ((color>>11)*weight)//16
-                    green = (((color>>5)&63)*weight+2*(16-weight))//16
-                    blue = ((color&31)*weight+5*(16-weight))//16
-                    color = red<<11 | green<<5 | blue
+                if (color&0x07e0)==0 and color>>11<=2 and (color&31)<=1:
+                    color = 0
             destination[b] = color>>8
             destination[b+1] = color&255
 
@@ -71,7 +66,7 @@ if micropython is not None:
             sy = (((y-96)*ys)>>10)+96-dy
             wave = 0
             if sy > 145:
-                triangle = (sy+tick*2)%64
+                triangle = (sy+tick*4//5)%64
                 if triangle > 31:
                     triangle = 64-triangle
                 wave = ((triangle-16)*(sy-145))>>9
@@ -79,28 +74,11 @@ if micropython is not None:
             for x in range(240):
                 sx = (((x-120)*xs)>>10)+120-dx+wave
                 b = (y*240+x)*2
-                color = 0x0045
+                color = 0
                 if sx >= 0 and sx < 240 and sy >= 0 and sy < 240:
                     a = (sy*240+sx)*2
                     color = (image[a]<<8)|image[a+1]
-                    weight = 16
-                    if sx < weight:
-                        weight = sx
-                    if 239-sx < weight:
-                        weight = 239-sx
-                    if sy < weight:
-                        weight = sy
-                    if 239-sy < weight:
-                        weight = 239-sy
-                    matte = (color>>11)*2+((color>>5)&63)-8
-                    if matte < 0:
-                        matte = 0
-                    if matte < weight:
-                        weight = matte
-                    if weight < 16:
-                        red = ((color>>11)*weight)//16
-                        green = (((color>>5)&63)*weight+2*(16-weight))//16
-                        blue = ((color&31)*weight+5*(16-weight))//16
-                        color = (red<<11)|(green<<5)|blue
+                    if (color&0x07e0)==0 and (color>>11)<=2 and (color&31)<=1:
+                        color = 0
                 output[b] = color>>8
                 output[b+1] = color&255

@@ -587,6 +587,7 @@ class RoundScreen:
         self.visible = True
         self.brightness_setting = 65
         self.animation_tick = 0
+        self.jelly_elapsed_ms = 0
         self.particles = []
         self.people = []
         self.info_frames = 0
@@ -649,7 +650,7 @@ class RoundScreen:
             if len(self.animation_buffer) < FRAME_SIZE:
                 self.animation_buffer = bytearray(FRAME_SIZE)
             output = memoryview(self.animation_buffer)[:FRAME_SIZE]
-            warp_pixels(output, frame, motion_parameters(self.animation_tick))
+            warp_pixels(output, frame, motion_parameters(self.jelly_elapsed_ms/250))
             frame = output
         self.driver.window(0, 0, WIDTH, HEIGHT)
         self.driver.start_pixels()
@@ -936,7 +937,7 @@ class RoundScreen:
         finally:
             self.driver.stop_pixels()
 
-    def animate(self, minutes, motion=None, world=None):
+    def animate(self, minutes, motion=None, world=None, elapsed_ms=250):
         """Restore and compose moving objects in one dirty rectangle."""
         if not self.visible:
             return False
@@ -958,10 +959,11 @@ class RoundScreen:
                     tilt_x = int(max(-1, min(1, effect.get("tilt_x", 0))) * 5)
                     tilt_y = int(max(-1, min(1, effect.get("tilt_y", 0))) * 5)
             self.animation_tick += 1
+            self.jelly_elapsed_ms += elapsed_ms
             if len(self.animation_buffer) < FRAME_SIZE:
                 self.animation_buffer = bytearray(FRAME_SIZE)
             output = memoryview(self.animation_buffer)[:FRAME_SIZE]
-            warp_pixels(output, frame, motion_parameters(self.animation_tick, tilt_x, tilt_y))
+            warp_pixels(output, frame, motion_parameters(self.jelly_elapsed_ms/250, tilt_x, tilt_y))
             self.driver.window(0, 0, WIDTH, HEIGHT)
             self.driver.start_pixels()
             try:

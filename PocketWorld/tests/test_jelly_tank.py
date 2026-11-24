@@ -15,6 +15,19 @@ import round_screen
 
 
 class JellyTankTest(unittest.TestCase):
+    def test_background_is_black(self):
+        source = ASSET.read_bytes()
+        self.assertEqual(source[:480], bytes(480))
+        output = bytearray(len(source))
+        warp_pixels(output,source,motion_parameters(7.2))
+        for x,y in ((0,0),(239,0),(0,239),(239,239)):
+            offset=(y*240+x)*2
+            self.assertEqual(output[offset:offset+2], bytes(2))
+        for phase in ('day','dawn','dusk','night','lights_out'):
+            tinted = round_screen.ambience_row(bytes(480),phase)*240
+            warp_pixels(output,tinted,motion_parameters(7.2))
+            self.assertEqual(output,bytes(len(output)),phase)
+
     def test_propulsion_matches_squeeze_and_oral_arms_follow_later(self):
         self.assertGreater(swim_state(3)[0], .9)
         pulse_step = swim_state(3)[1]-swim_state(2)[1]
@@ -99,6 +112,10 @@ class JellyTankTest(unittest.TestCase):
                         expected = bytearray(len(frame))
                         warp_reference(expected,frame,motion_parameters(4))
                         self.assertEqual(actual, expected)
+                        screen.jelly_elapsed_ms = 0
+                        for _ in range(10):
+                            screen.animate(0,world=world,elapsed_ms=100)
+                        self.assertEqual(driver.buffer,expected)
                         screen.battery_state = {"low": True}
                         screen.animate(0, world=world)
                         offset = (19*240+100)*2
