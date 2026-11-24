@@ -265,7 +265,7 @@ def service(client, engine, power=None, motion=None, microphone=None, screen=Non
     elif method == "GET" and path == "/api/info":
         key = getattr(settings, "ADMIN_KEY", "")
         response(client, "200 OK", "application/json", json.dumps({
-            "name": "サンニー", "version": "0.8.0", "wifi": settings.AP_SSID,
+            "name": "サンニー", "version": "0.9.0", "wifi": settings.AP_SSID,
             "updater_enabled": bool(key and key != "CHANGE_ME_BEFORE_UPDATING")
         }))
     elif method == "GET" and path.startswith("/api/state"):
@@ -479,7 +479,7 @@ def main():
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind(address)
     server.listen(2)
-    server.settimeout(0.02)
+    server.setblocking(False)
     print("Sanny Pocket World ready on http://192.168.4.1/")
 
     previous = time.ticks_ms()
@@ -494,6 +494,7 @@ def main():
     mic_react_ms = 60000  # First confirmed sample can create one event.
     uptime_ms = 0
     pending_display_save = None
+    frame_warm_at = 0
     while True:
         now = time.ticks_ms()
         delta = max(0, time.ticks_diff(now, previous))
@@ -549,11 +550,14 @@ def main():
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display refresh failed:", exc)
         animation_period = 250 if screen is not None and screen.frame_cache is not None else 1400
+        if screen is not None and screen.frame_cache is not None and screen.selected == "jellyfish":
+            animation_period = 60
         if screen is not None and animation_ms >= animation_period:
+            animation_elapsed = animation_ms-animation_ms%animation_period
             animation_ms %= animation_period
             try:
                 screen.animate(engine.worlds[screen.selected]["minutes"], motion,
-                               world=engine.worlds[screen.selected])
+                               world=engine.worlds[screen.selected], elapsed_ms=animation_elapsed)
             except (OSError, ValueError, MemoryError) as exc:
                 print("Display animation failed:", exc)
         if microphone is not None and mic_ms >= 250:
@@ -592,11 +596,14 @@ def main():
                 try:
                     pending_display_save = save_display_when_idle(
                         screen, pending_display_save, uptime_ms)
-                    screen.warm_next_frame(engine)
+                    if uptime_ms-frame_warm_at >= 250:
+                        frame_warm_at = uptime_ms
+                        screen.warm_next_frame(engine)
                 except (OSError, ValueError, MemoryError) as exc:
                     if pending_display_save is not None:
                         pending_display_save = uptime_ms
                     print("Display background update failed:", exc)
+            time.sleep_ms(2)
             continue
         result = False
         try:

@@ -1,6 +1,6 @@
 """Pocket World simulation core. Compatible with CPython and MicroPython.
 
-All six worlds advance independently, even when a different world is viewed.
+All worlds advance independently, even when a different world is viewed.
 No network, display, or filesystem dependency is required by this module.
 """
 
@@ -14,6 +14,7 @@ WORLD_DEFS = (
     ("fantasy", "ファンタジー", "Arcana", 46801),
     ("forest", "森のテラリウム", "Woodland", 57913),
     ("aquarium", "水の世界", "Aquarium", 68021),
+    ("jellyfish", "一匹のクラゲ", "Moon Jelly", 79133),
 )
 
 WEATHERS = ("sunny", "sunny", "cloudy", "rain", "windy")
@@ -63,7 +64,7 @@ def _starting_water_area(ident):
 
 
 class PocketWorld:
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self, restored=None):
         restored = restored if isinstance(restored, dict) else {}
@@ -100,6 +101,9 @@ class PocketWorld:
                             isinstance(item.get("message"), str)][-MAX_JOURNAL:],
             }
             world = self.worlds[ident]
+            if ident == "jellyfish":
+                world.update(plants=0, wildlife=1, residents=0, houses=0,
+                             magic=0, jellyfish_count=1, weather="sunny")
             allowed = {entry[0] for entry in visitor_choices(ident)}
             discoveries = old.get("discoveries", {})
             if not isinstance(discoveries, dict):
@@ -264,6 +268,8 @@ class PocketWorld:
         world["minutes"] += 1
         n = world["minutes"]
         ident = world["id"]
+        if ident == "jellyfish":
+            return  # A quiet single-animal tank never spawns visitors or fish.
         roll = self._rand(world, 100)
         self._visit(world, n, roll)
 
@@ -344,6 +350,8 @@ class PocketWorld:
             self._event(world, "落ち葉の下で小さな虫を見つけました")
         elif ident == "aquarium":
             self._event(world, "水面に波紋が広がり、魚が近寄ってきました")
+        elif ident == "jellyfish":
+            self._event(world, "一匹のクラゲが、ゆっくり傘をひらいています")
         return True
 
     def observe_sound(self, level):

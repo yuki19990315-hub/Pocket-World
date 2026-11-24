@@ -18,6 +18,8 @@ class SceneEventsTest(unittest.TestCase):
                   for key, world in engine.worlds.items()}
         engine.advance(60)
         for key, world in engine.worlds.items():
+            if key == "jellyfish":
+                continue
             visit = active_visit(world)
             self.assertIsNotNone(visit)
             self.assertEqual(sum(world["discoveries"].values()), 1)
@@ -32,7 +34,8 @@ class SceneEventsTest(unittest.TestCase):
         self.assertIsNone(active_visit(water, "ocean"))
         engine.advance(32)
         self.assertTrue(all(active_visit(world) is None for world in engine.worlds.values()))
-        self.assertTrue(all(world["discoveries"] for world in engine.worlds.values()))
+        self.assertTrue(all(world["discoveries"] for world in engine.worlds.values()
+                            if world["id"] != "jellyfish"))
 
     def test_saved_discoveries_migrate_and_snapshots_are_independent(self):
         engine = PocketWorld()
@@ -59,6 +62,8 @@ class SceneEventsTest(unittest.TestCase):
         engine = PocketWorld()
         engine.advance(4 * 86400)
         for world in engine.worlds.values():
+            if world["id"] == "jellyfish":
+                continue
             self.assertGreater(sum(world["discoveries"].values()), 100)
             self.assertTrue(any(VISITOR_INFO[kind][3] for kind in world["discoveries"]))
             self.assertLessEqual(len(world["journal"]), 24)

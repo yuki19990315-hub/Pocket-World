@@ -11,6 +11,7 @@ See THIRD_PARTY_NOTICES.md for attribution.
 
 import time
 from scene_events import active_visit, visitor_frames, visitor_position
+from jelly_tank import motion_parameters, warp_pixels, frame_bounds
 
 try:
     import micropython
@@ -24,11 +25,11 @@ _fill_region = None
 if micropython is not None:
     @micropython.viper
     def _copy_region(destination, frame, left: int, top: int, width: int, height: int):
-        output = ptr8(destination)
-        source = ptr8(frame)
-        stride = width * 2
+        output = ptr16(destination)
+        source = ptr16(frame)
+        stride = width
         for row in range(height):
-            origin = ((top + row) * 240 + left) * 2
+            origin = (top + row) * 240 + left
             offset = row * stride
             for column in range(stride):
                 output[offset + column] = source[origin + column]
@@ -84,7 +85,7 @@ if micropython is not None:
 
 WIDTH = 240
 HEIGHT = 240
-WORLD_IDS = ("nature", "city", "hybrid", "fantasy", "forest", "aquarium")
+WORLD_IDS = ("nature", "city", "hybrid", "fantasy", "forest", "aquarium", "jellyfish")
 WATER_AREAS = ("river", "ocean", "deepsea")
 FRAME_SIZE = WIDTH * HEIGHT * 2
 TOWN_FULL_HOUSES = 14  # 1 starter home + the 13 scheduled construction events.
@@ -586,6 +587,9 @@ class RoundScreen:
         self.visible = True
         self.brightness_setting = 65
         self.animation_tick = 0
+        self.jelly_elapsed_ms = 0
+        self.jelly_region = None
+        self.jelly_transfer = None
         self.particles = []
         self.people = []
         self.info_frames = 0
@@ -644,6 +648,14 @@ class RoundScreen:
         frame = self._get_frame(early_path, mature_path, alpha)
         if frame is None and not (valid_frame(early_path) and valid_frame(mature_path)):
             return False
+        if self.selected == "jellyfish" and frame is not None:
+            if len(self.animation_buffer) < FRAME_SIZE:
+                self.animation_buffer = bytearray(FRAME_SIZE)
+            output = memoryview(self.animation_buffer)[:FRAME_SIZE]
+            parameters = motion_parameters(self.jelly_elapsed_ms/250)
+            warp_pixels(output, frame, parameters)
+            self.jelly_region = frame_bounds(parameters)
+            frame = output
         self.driver.window(0, 0, WIDTH, HEIGHT)
         self.driver.start_pixels()
         try:
@@ -715,7 +727,11 @@ class RoundScreen:
             return False
         selected, water_area = self.selected, self.water_area
         try:
-            for ident in WORLD_IDS:
+            index = WORLD_IDS.index(selected)
+            neighbors = (selected, WORLD_IDS[(index + 1) % len(WORLD_IDS)],
+                         WORLD_IDS[(index - 1) % len(WORLD_IDS)])
+            order = neighbors + tuple(ident for ident in WORLD_IDS if ident not in neighbors)
+            for ident in order:
                 world = engine.worlds[ident]
                 areas = WATER_AREAS if ident == "aquarium" else (None,)
                 for area in areas:
@@ -799,6 +815,8 @@ class RoundScreen:
             self.driver.set_brightness(percent)
 
     def _art_frames(self, minutes, world=None):
+        if self.selected == "jellyfish":
+            return ("assets/jellyfish-tank.dat", "assets/jellyfish-tank.dat", 0)
         if self.selected == "hybrid":
             return hybrid_art_frames(minutes)
         ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
@@ -923,7 +941,7 @@ class RoundScreen:
         finally:
             self.driver.stop_pixels()
 
-    def animate(self, minutes, motion=None, world=None):
+    def animate(self, minutes, motion=None, world=None, elapsed_ms=250):
         """Restore and compose moving objects in one dirty rectangle."""
         if not self.visible:
             return False
@@ -935,6 +953,53 @@ class RoundScreen:
         early_path, mature_path, alpha = self._art_frames(minutes, world)
         frame = self._get_frame(early_path, mature_path, alpha)
         old_regions = [(x, y, size, size) for x, y, size, _ in self.particles]
+        if self.selected == "jellyfish":
+            if frame is None or self.lighting_phase == "lights_out":
+                return False
+            tilt_x, tilt_y = 0, 0
+            if motion is not None:
+                effect = motion.snapshot()
+                if effect.get("connected"):
+                    tilt_x = int(max(-1, min(1, effect.get("tilt_x", 0))) * 5)
+                    tilt_y = int(max(-1, min(1, effect.get("tilt_y", 0))) * 5)
+            self.animation_tick += 1
+            self.jelly_elapsed_ms += elapsed_ms
+            if len(self.animation_buffer) < FRAME_SIZE:
+                self.animation_buffer = bytearray(FRAME_SIZE)
+            output = memoryview(self.animation_buffer)[:FRAME_SIZE]
+            parameters = motion_parameters(self.jelly_elapsed_ms/250, tilt_x, tilt_y)
+            warp_pixels(output, frame, parameters)
+            region = frame_bounds(parameters)
+            previous = self.jelly_region or region
+            left = min(previous[0],region[0])
+            top = min(previous[1],region[1])
+            right = max(previous[0]+previous[2],region[0]+region[2])
+            bottom = max(previous[1]+previous[3],region[1]+region[3])
+            self.jelly_region = region
+            pixels = output
+            if _copy_region is not None:
+                if self.jelly_transfer is None:
+                    self.jelly_transfer = bytearray(FRAME_SIZE)
+                length = (right-left)*(bottom-top)*2
+                pixels = memoryview(self.jelly_transfer)[:length]
+                _copy_region(pixels,output,left,top,right-left,bottom-top)
+                self.driver.window(left,top,right-left,bottom-top)
+            else:
+                self.driver.window(0,0,WIDTH,HEIGHT)
+            self.driver.start_pixels()
+            try:
+                self.driver.write_pixels(pixels)
+            finally:
+                self.driver.stop_pixels()
+            if self.battery_state and self.battery_state.get("low"):
+                self.driver.solid(97, 16, 43, 16, 0x18C3)
+                self.driver.solid(100, 19, 31, 10, 0xF800)
+                self.driver.solid(132, 22, 4, 4, 0xF800)
+            elif self.battery_state and self.battery_state.get("charging") is True:
+                self.driver.solid(97, 16, 43, 16, 0x0427)
+                self.driver.solid(100, 19, 31, 10, 0x05E0)
+                self.driver.solid(132, 22, 4, 4, 0x05E0)
+            return True
         old_regions.extend((x, y, 1, 3) for x, y in self.people)
         if self.visitor_rect is not None:
             old_regions.append(self.visitor_rect)
@@ -958,7 +1023,9 @@ class RoundScreen:
                     self.shake_frames = 4
                 self.shake_last_id = shake_id
         weather = world.get("weather", "sunny") if world else "sunny"
-        if self.selected == "hybrid":
+        if self.selected == "jellyfish":
+            self.particles = []
+        elif self.selected == "hybrid":
             self.particles = hybrid_ambient_particles(
                 self.animation_tick, self.lighting_phase, weather,
                 tilt_x, tilt_y, self.shake_frames > 0)

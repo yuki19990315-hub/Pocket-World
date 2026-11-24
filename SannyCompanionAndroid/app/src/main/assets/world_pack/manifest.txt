@@ -32,4 +32,6 @@ deepsea-young.dat
 deepsea-young.png
 deepsea-mature.dat
 deepsea-mature.png
+jellyfish-tank.dat
+jellyfish-tank.png
 index.html
