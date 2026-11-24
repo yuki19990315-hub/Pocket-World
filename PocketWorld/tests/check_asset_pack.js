@@ -52,7 +52,10 @@ const names = [];
     assert.deepEqual(fs.readFileSync(path.join(pack,base+'.dat')),fs.readFileSync(dat));
     names.push(base+'.dat',base+'.png');
   }
-  names.push('index.html');
+  assert.deepEqual(fs.readFileSync(path.join(pack,'jellyfish-tank.dat')),
+    fs.readFileSync(path.join(root,'firmware','assets','jellyfish-tank.dat')));
+  assert.equal(fs.statSync(path.join(pack,'jellyfish-tank.dat')).size,240*240*2);
+  names.push('jellyfish-tank.dat','index.html');
   assert.deepEqual(fs.readFileSync(path.join(pack,'manifest.txt'),'utf8').trim().split(/\r?\n/),names);
   assert.deepEqual(fs.readFileSync(path.join(pack,'index.html')),fs.readFileSync(path.join(root,'www','index.html')));
   assert.ok(names.every(name=>fs.statSync(path.join(pack,name)).size<=128*1024));

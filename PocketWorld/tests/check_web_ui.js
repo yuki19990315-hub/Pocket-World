@@ -29,7 +29,7 @@ function fakeNode(dataset = {}) {
 
 async function runPreview(world, area, liveState = false, illustrated = false, visitors = false) {
   const nodes = new Map();
-  const worldButtons = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium']
+  const worldButtons = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium', 'jellyfish']
     .map(id => fakeNode({world: id}));
   const areaButtons = ['river', 'ocean', 'deepsea'].map(id => fakeNode({area: id}));
   const phaseButtons = ['auto','dawn','day','dusk','night','lights_out']
@@ -74,7 +74,7 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
     ...(illustrated ? {Image: class { constructor() { this.complete = true; this.naturalWidth = 240; } }} : {}),
     fetch() {
       if (!liveState) return Promise.reject(new Error('deliberately offline'));
-      const worlds = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium']
+      const worlds = ['nature', 'city', 'hybrid', 'fantasy', 'forest', 'aquarium', 'jellyfish']
         .map(id => ({id, name: id, seed: 100, minutes: 0, weather: 'sunny',
           plants: 4, wildlife: 2, residents: 0, houses: 0, magic: 0,
           visitor_catalog: visitors ? [
@@ -143,6 +143,11 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
     assert.ok(!paintColors.includes('#fff2b7'), 'lights switch off before bedtime');
   }
   assert.ok(nodes.get('world-title').textContent.length > 0);
+  if (world === 'jellyfish') {
+    assert.match(nodes.get('stats').innerHTML, /<strong>1<\/strong><em>匹<\/em>/);
+    assert.ok(nodes.get('visitor-now').textContent.includes('ずっと一匹'));
+    assert.ok(paintColors.includes('#f0acff'), 'one moon jelly is rendered');
+  }
   if (liveState) {
     assert.ok(translated > 0, 'onboard tilt moves the scene');
     assert.equal(nodes.get('motion-status').textContent, '傾きに反応中');
@@ -178,5 +183,7 @@ async function runPreview(world, area, liveState = false, illustrated = false, v
   ]) await runPreview(world, area, false, true);
   await runPreview('aquarium', 'deepsea', true);
   await runPreview('nature', 'river', true, true, true);
+  await runPreview('jellyfish', 'river');
+  await runPreview('jellyfish', 'river', true);
   process.stdout.write('Pocket World UI: scene/lock/tiny resident smoke tests passed\n');
 })().catch(error => { console.error(error); process.exitCode = 1; });

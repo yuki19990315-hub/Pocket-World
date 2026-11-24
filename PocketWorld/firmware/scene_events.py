@@ -27,6 +27,8 @@ VISITOR_INFO = {
 
 
 def visitor_choices(world_id):
+    if world_id == "jellyfish":
+        return ()
     if world_id == "aquarium":
         return VISITORS["river"] + VISITORS["ocean"] + VISITORS["deepsea"]
     return VISITORS[world_id]

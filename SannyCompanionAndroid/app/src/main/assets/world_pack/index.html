@@ -18,7 +18,7 @@
     .eyebrow{color:#bedac4;text-transform:uppercase;font-weight:700;font-size:11px;letter-spacing:.18em;margin:0 0 7px}
     h1{margin:0;font-size:clamp(28px,5vw,40px);letter-spacing:-.04em;line-height:1.22}
     .intro{color:var(--muted);margin:10px 0 25px;font-size:13px;line-height:1.7}
-    .tabs{display:grid;grid-template-columns:repeat(6,1fr);gap:7px;margin-bottom:17px}
+    .tabs{display:grid;grid-template-columns:repeat(7,1fr);gap:7px;margin-bottom:17px}
     .tab{background:#18292b;border:1px solid #344a45;border-radius:13px;padding:11px 4px 10px;color:#a9beb5;min-width:0;transition:background .2s,transform .2s}
     .tab.active{background:#29473b;border-color:#9ac89c;color:#f5fff1;box-shadow:inset 0 0 0 1px #6e9976}
     .tab .sym{display:block;font-size:22px;margin-bottom:4px;line-height:1.3}
@@ -51,7 +51,7 @@
     .footer{margin-top:20px;font-size:11px;color:#839d93;line-height:1.7}
     #toast{position:fixed;bottom:30px;left:50%;transform:translate(-50%,10px);opacity:0;transition:.2s;background:#efffe9;color:#213c31;border-radius:14px;padding:11px 17px;max-width:min(350px,90vw);text-align:center;font-size:13px;box-shadow:0 8px 30px #0006;z-index:10;pointer-events:none}
     #toast.show{transform:translate(-50%,0);opacity:1}
-    @media(max-width:690px){.layout{grid-template-columns:1fr}.tabs{grid-template-columns:repeat(3,1fr)}.panel{padding:16px}.display{padding:13px}.screen{max-width:400px}.shell{padding-top:15px}.world-head h2{font-size:20px}}
+    @media(max-width:690px){.layout{grid-template-columns:1fr}.tabs{grid-template-columns:repeat(4,1fr)}.panel{padding:16px}.display{padding:13px}.screen{max-width:400px}.shell{padding-top:15px}.world-head h2{font-size:20px}}
   </style>
 </head>
 <body>
@@ -67,6 +67,7 @@
     <button class="tab" data-world="fantasy"><span class="sym">✨</span><span class="text">魔法</span></button>
     <button class="tab" data-world="forest"><span class="sym">🌲</span><span class="text">森</span></button>
     <button class="tab" data-world="aquarium"><span class="sym">🐠</span><span class="text">水槽</span></button>
+    <button class="tab" data-world="jellyfish"><span class="sym">☂</span><span class="text">クラゲ</span></button>
   </nav>
   <div class="layout">
     <section class="display" aria-label="世界の観察">
@@ -96,7 +97,7 @@
 <script>
 (() => {
   "use strict";
-  const worlds = ["nature", "city", "hybrid", "fantasy", "forest", "aquarium"];
+  const worlds = ["nature", "city", "hybrid", "fantasy", "forest", "aquarium", "jellyfish"];
   const waterAreas = ["river", "ocean", "deepsea"];
   const waterNames = {river:"川の水槽",ocean:"海の水槽",deepsea:"深海の水槽"};
   const defaults = {
@@ -105,7 +106,8 @@
     hybrid: {name:"自然＋文明",label:"Harmony / Coexistence",seed:35791,plants:10,wildlife:2,residents:2,houses:1,magic:0},
     fantasy: {name:"ファンタジー",label:"Arcana / Fantasy",seed:46801,plants:10,wildlife:2,residents:0,houses:0,magic:1},
     forest: {name:"森のテラリウム",label:"Woodland / Living Forest",seed:57913,plants:10,wildlife:2,residents:0,houses:0,magic:0},
-    aquarium: {name:"水の世界",label:"Aquarium / Three Waters",seed:68021,plants:6,wildlife:3,residents:0,houses:0,magic:0}
+    aquarium: {name:"水の世界",label:"Aquarium / Three Waters",seed:68021,plants:6,wildlife:3,residents:0,houses:0,magic:0},
+    jellyfish: {name:"一匹のクラゲ",label:"Moon Jelly / Quiet Tank",seed:79133,plants:0,wildlife:1,residents:0,houses:0,magic:0}
   };
   const palette = {
     nature:{water:"#65a7a3",deep:"#3c8b91",soil:"#b8b476",ground:"#80ba77",light:"#9bd483",shadow:"#4a7d59",trees:"#285d4f",trunk:"#73563f",roof:"#b77d52"},
@@ -128,14 +130,15 @@
     hybrid:"自然の天候と街の発展が、周囲の音にそれぞれ反応します。",
     fantasy:"強い音から魔力がたまり、ときどき珍しい流れ星が降ります。",
     forest:"森の天気や木々の様子が、周囲の音に合わせて変わります。",
-    aquarium:"音が静かなときは穏やかに、にぎやかになると水面に波紋が広がります。"
+    aquarium:"音が静かなときは穏やかに、にぎやかになると水面に波紋が広がります。",
+    jellyfish:"静かな水槽に、クラゲが一匹だけ。ゆっくり漂う姿を眺められます。"
   };
   const $ = id => document.getElementById(id);
   const canvas = $("world-canvas"), ctx = canvas.getContext("2d");
   ctx.imageSmoothingEnabled = false;
   // The bundled PNGs are the same master illustrations used to build the
   // microcontroller's RGB565 frames. Only animation is browser-specific.
-  const artNames = [...worlds,"river","deepsea"];
+  const artNames = [...worlds.filter(id=>id!=="jellyfish"),"river","deepsea"];
   const assetBase = location.protocol === "file:" ? "../design/assets/" : "/assets/";
   const worldArt = {};
   if(typeof Image!=="undefined")artNames.forEach(name=>{
@@ -161,6 +164,7 @@
     demoMinutes = Math.floor((Date.now()-startTime)/1200);
     return worlds.map(key => {
       const base = defaults[key], m = demoMinutes;
+      if(key==="jellyfish")return {...base,id:key,minutes:m,weather:"sunny",jellyfish_count:1,events:["一匹のクラゲがゆっくり漂っています"]};
       if(key==="aquarium")return {...base,id:key,minutes:m,weather:"sunny",events:["デモでは3つの水槽を自由に見られます"],
         water_areas:{
           river:{unlocked:true,plants:6+Math.floor(m/45),fish:2+Math.floor(m/190),shrimp:1+Math.floor(m/245),coral:0,glow:0,visitors:0},
@@ -467,7 +471,42 @@
     ctx.restore();hitAreas=[];drawShakeSparkles(t);ctx.restore();
     return true;
   }
+  function drawJellyTank(world,milliseconds){
+    const t=milliseconds/1000,pulse=(Math.sin(t*1.45)+1)/2;
+    const cx=120+Math.trunc(Math.sin(t*.23)*15);
+    const cy=93+Math.trunc(Math.sin(t*.38)*9);
+    const radius=24+Math.trunc(pulse*5),height=18+Math.trunc((1-pulse)*5);
+    hitAreas=[];
+    ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
+    ctx.save();if(enlarged){ctx.translate(180,180);ctx.scale(1.32,1.32);ctx.translate(-180,-180);}ctx.scale(1.5,1.5);
+    for(let y=0;y<240;y++){
+      const glow=Math.max(0,1-((y-93)/165)**2);
+      rect(0,y,240,1,"rgb("+Math.floor(3+glow*5)+","+Math.floor(11+glow*21)+","+Math.floor(25+glow*34)+")");
+    }
+    ctx.strokeStyle="#0d263a";ctx.lineWidth=1;ctx.beginPath();ctx.arc(120,120,108.5,Math.PI*1.14,Math.PI*1.86);ctx.stroke();
+    ctx.fillStyle="#071c2b";ctx.beginPath();ctx.ellipse(120,204,65,7,0,0,Math.PI*2);ctx.fill();
+    if(motionState.connected)ctx.translate(motionState.tilt_x*8,motionState.tilt_y*8);
+    for(let i=0;i<8;i++){
+      const root=cx+Math.trunc((i-3.5)*radius/4.3),length=37+(i*11)%24;
+      for(let step=0;step<length;step+=3){
+        const sway=Math.trunc(Math.sin(t*.9+step*.11+i*.7)*(2+step/10));
+        rect(root+sway,cy+step,i%2?1:2,4,i%2?"#8c9cf7":"#5b7cc5");
+      }
+    }
+    for(let row=0;row<height;row++){
+      const half=Math.max(1,Math.trunc(radius*Math.sqrt(Math.max(0,1-(1-row/height)**2))));
+      rect(cx-half,cy-height+row,half*2,1,row<height/3?"#7b8ed6":"#6b75d6");
+      if(half>3){rect(cx-half,cy-height+row,1,1,"#bddfff");rect(cx+half-1,cy-height+row,1,1,"#bddfff");}
+    }
+    rect(cx-radius+1,cy,radius*2-2,2,"#d6daff");
+    for(const [dx,dy] of [[-5,-9],[3,-9],[-5,-4],[3,-4]]){
+      rect(cx+dx,cy+dy,4,1,"#f0acff");rect(cx+dx-1,cy+dy+1,1,3,"#f0acff");
+      rect(cx+dx+4,cy+dy+1,1,3,"#f0acff");rect(cx+dx,cy+dy+4,4,1,"#f0acff");
+    }
+    ctx.restore();drawDayLighting(world);ctx.restore();
+  }
   function drawScene(world, t){
+    if(selected==="jellyfish"){drawJellyTank(world,t);return;}
     if(illustratedScene(world,t))return;
     const p=palette[selected], minute=world.minutes||0;
     ctx.clearRect(0,0,360,360);ctx.save();ctx.beginPath();ctx.arc(180,180,178,0,Math.PI*2);ctx.clip();
@@ -572,6 +611,7 @@
   }
   function render(){
     const w=getWorld();updateWaterTabs(w);
+    const isJelly=selected==="jellyfish";
     const isWater=selected==="aquarium";
     $("device-select").hidden=!live||!displayState.connected;
     $("device-select").textContent=isWater?"この水槽をサンニーに表示":"この世界をサンニーに表示";
@@ -587,6 +627,10 @@
     $("screen-label").textContent="DAY "+(Math.floor(w.minutes/1440)+1)+" ・ "+(isWater?waterNames[waterArea]:stage(w));
     $("world-hint").textContent=isWater?"川・海・深海は別々に成長。水面をタップしてみよう":selected==="forest"?"森の地上も土の中も、ゆっくり育っていく":"世界をタップして、小さな変化を起こそう";
     let metrics=[["🌿 植物",w.plants,"株"],["🐾 動物",w.wildlife,"匹"],["👤 住民",w.residents,"人"],[selected==="fantasy"?"✨ 魔力":"🏠 建物",selected==="fantasy"?w.magic:w.houses,selected==="fantasy"?"pt":"軒"]];
+    if(isJelly){
+      metrics=[["クラゲ",1,"匹"],["ほかの生き物",0,"匹"]];
+      $("weather").textContent="静かな水槽";$("world-hint").textContent="一匹のクラゲの、傘と触手のゆらぎを眺めよう";
+    }
     if(selected==="forest")metrics=[["🌲 植物",w.plants,"株"],["🐾 生き物",w.wildlife,"匹"],["🍄 キノコ",w.mushrooms||0,"本"],["✨ ホタル",w.fireflies||0,"匹"]];
     if(isWater){
       const area=(w.water_areas||{})[waterArea]||{};
@@ -597,6 +641,7 @@
     $("stats").innerHTML=metrics.map(([label,value,unit])=>'<div class="stat"><small>'+label+'</small><strong>'+value+'</strong><em>'+unit+'</em></div>').join("");
     $("elapsed").textContent=Math.floor(w.minutes/60)+"時間 "+(w.minutes%60)+"分";
     $("stage").textContent=isWater?({river:"川の暮らしが成長中",ocean:"サンゴ礁が成長中",deepsea:"光る生態系が成長中"})[waterArea]:stage(w);
+    if(isJelly){$("stage").textContent="一匹のまま、ゆっくり漂う";$("screen-label").textContent="MOON JELLY · 1";}
     const timeline=powerState.day_timeline||{};
     $("day-cycle").textContent="日の出 "+(timeline.sunrise||"08:30")+" → 夕方 "+(timeline.sunset||"15:00")+" → 灯り "+(timeline.nightfall||"16:00")+" → 消灯 "+(timeline.lights_out||"17:15")+"。時間変更にも連動します。";
     $("day-phase").textContent=phaseLabels[activePhase()]||phaseLabels.day;
@@ -613,7 +658,8 @@
     $("visitor-now").textContent=currentVisit
       ?(currentVisit.rare?"珍しい来訪：":"いまの来訪：")+currentVisit.name
       :"数分ごとに小さな来訪が起こり、出会いが自動で記録されます。";
-    $("discoveries").replaceChildren(...(catalog.length?catalog:[{name:"サンニーに接続すると来訪の記録を見られます",visits:1}]).map(item=>{
+    if(isJelly)$("visitor-now").textContent="この水槽に来訪者は現れません。クラゲはずっと一匹です。";
+    $("discoveries").replaceChildren(...(isJelly?[]:catalog.length?catalog:[{name:"サンニーに接続すると来訪の記録を見られます",visits:1}]).map(item=>{
       const li=document.createElement("li");
       li.textContent=item.visits>0?(item.rare?"✧ ":"")+item.name+
         (item.id?" ・ "+item.visits+"回":""):"？？？";
@@ -634,7 +680,7 @@
     try{
       const response=await fetch("/api/state?clock="+Math.floor(Date.now()/1000),{cache:"no-store",signal:AbortSignal.timeout(2400)});
       if(!response.ok)throw Error("No ESP32 API");const data=await response.json();
-      if(!Array.isArray(data.worlds)||data.worlds.length!==6)throw Error("Bad state");
+      if(!Array.isArray(data.worlds)||!worlds.every(id=>data.worlds.some(w=>w.id===id)))throw Error("Bad state");
       current=Object.fromEntries(data.worlds.map(w=>[w.id,w]));
       stateReceivedAt=Date.now();
       powerState=data.power||powerState;

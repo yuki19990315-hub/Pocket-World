@@ -33,10 +33,10 @@ class TestPocketWorld(unittest.TestCase):
         self.assertEqual((restored.worlds["hybrid"]["houses"],
                           restored.worlds["hybrid"]["residents"]), (1, 2))
 
-    def test_six_worlds_exist(self):
+    def test_seven_worlds_exist(self):
         engine = PocketWorld()
         self.assertEqual(set(engine.worlds), {"nature", "city", "hybrid", "fantasy",
-                                             "forest", "aquarium"})
+                                             "forest", "aquarium", "jellyfish"})
 
     def test_hidden_worlds_advance(self):
         engine = PocketWorld()

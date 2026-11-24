@@ -11,6 +11,7 @@ See THIRD_PARTY_NOTICES.md for attribution.
 
 import time
 from scene_events import active_visit, visitor_frames, visitor_position
+from jelly_tank import jelly_rectangles
 
 try:
     import micropython
@@ -84,7 +85,7 @@ if micropython is not None:
 
 WIDTH = 240
 HEIGHT = 240
-WORLD_IDS = ("nature", "city", "hybrid", "fantasy", "forest", "aquarium")
+WORLD_IDS = ("nature", "city", "hybrid", "fantasy", "forest", "aquarium", "jellyfish")
 WATER_AREAS = ("river", "ocean", "deepsea")
 FRAME_SIZE = WIDTH * HEIGHT * 2
 TOWN_FULL_HOUSES = 14  # 1 starter home + the 13 scheduled construction events.
@@ -799,6 +800,8 @@ class RoundScreen:
             self.driver.set_brightness(percent)
 
     def _art_frames(self, minutes, world=None):
+        if self.selected == "jellyfish":
+            return ("assets/jellyfish-tank.dat", "assets/jellyfish-tank.dat", 0)
         if self.selected == "hybrid":
             return hybrid_art_frames(minutes)
         ident = ("aquarium" if self.water_area == "ocean" else self.water_area) \
@@ -958,7 +961,9 @@ class RoundScreen:
                     self.shake_frames = 4
                 self.shake_last_id = shake_id
         weather = world.get("weather", "sunny") if world else "sunny"
-        if self.selected == "hybrid":
+        if self.selected == "jellyfish":
+            self.particles = []
+        elif self.selected == "hybrid":
             self.particles = hybrid_ambient_particles(
                 self.animation_tick, self.lighting_phase, weather,
                 tilt_x, tilt_y, self.shake_frames > 0)
@@ -993,6 +998,14 @@ class RoundScreen:
         if self.selected == "city" and self.lighting_phase == "night":
             rectangles.extend(self._lamp_rectangles(world))
         rectangles.extend(self._visitor_rectangles(world))
+        if self.selected == "jellyfish" and self.lighting_phase != "lights_out":
+            jelly = jelly_rectangles(self.animation_tick, tilt_x, tilt_y)
+            rectangles.extend(jelly)
+            left = min(item[0] for item in jelly)
+            top = min(item[1] for item in jelly)
+            right = max(item[0] + item[2] for item in jelly)
+            bottom = max(item[1] + item[3] for item in jelly)
+            self.visitor_rect = (left, top, right - left, bottom - top)
         if frame is not None:
             self._paint_animation(frame, old_regions, rectangles)
         else:

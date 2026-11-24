@@ -40,9 +40,10 @@ async function main() {
     fs.copyFileSync(dat, path.join(bundle, name + '.dat'));
   }
   fs.copyFileSync(path.join(__dirname, '..', 'www', 'index.html'), path.join(bundle, 'index.html'));
+  fs.copyFileSync(path.join(output, 'jellyfish-tank.dat'), path.join(bundle, 'jellyfish-tank.dat'));
   // Deploy dashboard last, so a partial transfer leaves the previous UI active.
-  const names = [...worlds.flatMap(w => phases(w).flatMap(s => [`${w}-${s}.dat`, `${w}-${s}.png`])), 'index.html'];
+  const names = [...worlds.flatMap(w => phases(w).flatMap(s => [`${w}-${s}.dat`, `${w}-${s}.png`])), 'jellyfish-tank.dat', 'index.html'];
   fs.writeFileSync(path.join(bundle, 'manifest.txt'), names.join('\n') + '\n');
-  console.log(`Built ${(names.length - 1) / 2} device frames (${total} bytes RGB565); packaged ${names.length} update files`);
+  console.log(`Built 17 illustrated frames (${total} bytes RGB565) plus the single-jelly tank; packaged ${names.length} update files`);
 }
 main().catch(err => {console.error(err); process.exitCode = 1;});
